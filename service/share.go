@@ -95,34 +95,8 @@ func ClientJSON(u database.User, host string, sc database.ServerConf) ([]byte, e
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-// MihomoYAML renders proxies for mihomo (Clash.Meta), one per port binding.
+// MihomoYAML renders only the proxies section for mihomo (Clash.Meta), one per port binding.
 func MihomoYAML(u database.User, host string, sc database.ServerConf) string {
-	var b strings.Builder
-	b.WriteString("proxies:\n")
-	for _, pb := range sc.PortBindings {
-		portLabel := strconv.Itoa(pb.Port)
-		if pb.PortRange != "" {
-			portLabel = pb.PortRange
-		}
-		name := fmt.Sprintf("mieru-%s-%s-%s", u.Name, portLabel, pb.Protocol)
-		fmt.Fprintf(&b, "  - name: %s\n", strconv.Quote(name))
-		b.WriteString("    type: mieru\n")
-		fmt.Fprintf(&b, "    server: %s\n", strconv.Quote(host))
-		if pb.PortRange != "" {
-			fmt.Fprintf(&b, "    port-range: %s\n", pb.PortRange)
-		} else {
-			fmt.Fprintf(&b, "    port: %d\n", pb.Port)
-		}
-		fmt.Fprintf(&b, "    transport: %s\n", pb.Protocol)
-		b.WriteString("    udp: true\n")
-		fmt.Fprintf(&b, "    username: %s\n", strconv.Quote(u.Name))
-		fmt.Fprintf(&b, "    password: %s\n", strconv.Quote(u.Password))
-		if sc.Multiplexing != "" {
-			fmt.Fprintf(&b, "    multiplexing: %s\n", sc.Multiplexing)
-		}
-		if sc.HandshakeMode != "" {
-			fmt.Fprintf(&b, "    handshake-mode: %s\n", sc.HandshakeMode)
-		}
-	}
-	return b.String()
+	out, _ := encodeYAML(map[string]any{"proxies": MihomoProxies(u, host, sc)})
+	return out
 }

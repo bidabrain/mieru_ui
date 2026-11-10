@@ -73,6 +73,7 @@ type Settings struct {
 type Data struct {
 	Settings       Settings   `json:"settings"`
 	Server         ServerConf `json:"server"`
+	Mihomo         MihomoConf `json:"mihomo"`
 	Users          []User     `json:"users"`
 	NextUserID     int64      `json:"nextUserID"`
 	AppliedUsers   []string   `json:"appliedUsers"`
@@ -116,6 +117,7 @@ func defaults() Data {
 			DualStack:    "USE_FIRST_IP",
 			Multiplexing: "MULTIPLEXING_LOW",
 		},
+		Mihomo:     DefaultMihomo(),
 		Users:      []User{},
 		NextUserID: 1,
 	}
@@ -196,6 +198,9 @@ func fillMissing(d *Data) {
 	}
 	if d.Users == nil {
 		d.Users = []User{}
+	}
+	if d.Mihomo.MixedPort == 0 { // databases created before the mihomo template existed
+		d.Mihomo = DefaultMihomo()
 	}
 	if d.NextUserID == 0 {
 		d.NextUserID = 1

@@ -8,7 +8,7 @@ import (
 )
 
 // Version is overridden at build time with -ldflags "-X mieru-ui/config.Version=..."
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 // DataDir returns the directory that stores the panel database and generated files.
 func DataDir() string {

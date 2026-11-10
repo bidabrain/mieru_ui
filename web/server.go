@@ -131,6 +131,10 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/users/{id}/share", s.shareUser)
 	api("GET /api/qrcode", s.qrcode)
 
+	api("GET /api/mihomo", s.getMihomo)
+	api("PUT /api/mihomo", s.putMihomo)
+	api("POST /api/mihomo/preview", s.previewMihomo)
+
 	api("GET /api/server", s.getServer)
 	api("PUT /api/server", s.putServer)
 	api("GET /api/server/preview", s.previewServer)

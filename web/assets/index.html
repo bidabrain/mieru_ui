@@ -28,6 +28,7 @@
       <a data-page="dashboard">概览</a>
       <a data-page="users">用户管理</a>
       <a data-page="ports">端口与协议</a>
+      <a data-page="mihomo">mihomo 配置</a>
       <a data-page="firewall">防火墙</a>
       <a data-page="advanced">高级设置</a>
       <a data-page="panel">面板设置</a>
@@ -124,6 +125,139 @@
           <thead><tr><th>类型</th><th>端口 / 范围</th><th>协议</th><th></th></tr></thead>
           <tbody id="port-rows"></tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- mihomo template -->
+    <section data-section="mihomo" class="hidden">
+      <div class="page-head">
+        <h1>mihomo 配置模板</h1>
+        <div class="btn-row">
+          <button class="btn" id="btn-mh-defaults">恢复默认</button>
+          <button class="btn primary" id="btn-mh-save">保存</button>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:-8px">这里定制 mihomo（Clash.Meta / Clash Verge / FlClash 等）的完整配置。保存后，「用户管理 → 分享 → mihomo」生成的配置会按这个模板实时生成，自动填入该用户的节点。</p>
+
+      <div class="mh-layout">
+        <div class="mh-form">
+          <div class="card">
+            <h2>分流模式</h2>
+            <div class="radio-cards">
+              <label class="radio-card"><input type="radio" name="mh-route" data-k="routeMode" value="bypass_cn">
+                <div><strong>绕过大陆（推荐）</strong><span>国内网站和中国 IP 直连，其余全部走代理</span></div></label>
+              <label class="radio-card"><input type="radio" name="mh-route" data-k="routeMode" value="gfw">
+                <div><strong>GFW 列表</strong><span>只有 GFW 列表中被墙的网站走代理，其余直连</span></div></label>
+              <label class="radio-card"><input type="radio" name="mh-route" data-k="routeMode" value="global">
+                <div><strong>全局代理</strong><span>除下方的直连规则外，全部走代理</span></div></label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>规则选项</h2>
+            <div class="check-grid">
+              <label class="check"><input type="checkbox" data-k="privateDirect"> 局域网 / 私有地址直连</label>
+              <label class="check"><input type="checkbox" data-k="blockAds"> 拦截广告（category-ads-all）</label>
+              <label class="check"><input type="checkbox" data-k="appleCNDirect"> Apple 国内服务直连</label>
+              <label class="check"><input type="checkbox" data-k="msCNDirect"> 微软国内服务直连</label>
+            </div>
+            <h3>以下服务强制走代理</h3>
+            <div class="check-grid" id="mh-services"></div>
+          </div>
+
+          <div class="card">
+            <h2>自定义规则</h2>
+            <p class="muted small">每行一个域名，按后缀匹配（例如 <span class="mono">example.com</span> 同时匹配 <span class="mono">www.example.com</span>）。优先级：自定义规则 &gt; 拦截 &gt; 直连 &gt; 代理 &gt; 上面的选项 &gt; 分流模式。</p>
+            <div class="form-grid three">
+              <label>直连域名<textarea data-list="directDomains" rows="6" class="mono" spellcheck="false" placeholder="mynas.example.com"></textarea></label>
+              <label>代理域名<textarea data-list="proxyDomains" rows="6" class="mono" spellcheck="false" placeholder="example.org"></textarea></label>
+              <label>拦截域名<textarea data-list="rejectDomains" rows="6" class="mono" spellcheck="false" placeholder="ads.example.net"></textarea></label>
+            </div>
+            <label>高级规则 <small>每行一条，格式 <span class="mono">类型,值,DIRECT|REJECT|PROXY[,no-resolve]</span>，PROXY 表示走代理组。支持 DOMAIN / DOMAIN-SUFFIX / DOMAIN-KEYWORD / GEOSITE / GEOIP / IP-CIDR / IP-CIDR6 / SRC-IP-CIDR / IP-ASN / DST-PORT / SRC-PORT / PROCESS-NAME</small>
+              <textarea data-list="customRules" rows="5" class="mono" spellcheck="false" placeholder="IP-CIDR,192.168.50.0/24,DIRECT,no-resolve&#10;PROCESS-NAME,Telegram.exe,PROXY&#10;GEOSITE,steam@cn,DIRECT"></textarea></label>
+          </div>
+
+          <div class="card">
+            <h2>代理组</h2>
+            <div class="form-grid">
+              <label>主代理组名称<input data-k="groupName"></label>
+              <label>测速地址<input data-k="testURL"></label>
+              <label>测速间隔（秒）<input type="number" data-k="testIntervalSecs" min="30"></label>
+            </div>
+            <div class="check-grid">
+              <label class="check"><input type="checkbox" data-k="autoGroup"> 自动选择组（url-test，选延迟最低的节点）</label>
+              <label class="check"><input type="checkbox" data-k="fallbackGroup"> 故障转移组（fallback，节点不可用时自动切换）</label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>基础设置</h2>
+            <div class="form-grid">
+              <label>混合代理端口 <small>HTTP + SOCKS5</small><input type="number" data-k="mixedPort" min="1" max="65535"></label>
+              <label>运行模式
+                <select data-k="mode"><option value="rule">rule 规则</option><option value="global">global 全局</option><option value="direct">direct 直连</option></select></label>
+              <label>日志级别
+                <select data-k="logLevel"><option>silent</option><option>error</option><option>warning</option><option>info</option><option>debug</option></select></label>
+              <label>外部控制器 <small>留空则不开启</small><input data-k="externalController" placeholder="127.0.0.1:9090"></label>
+              <label>控制器密钥 <small>可选</small><input data-k="secret"></label>
+            </div>
+            <div class="check-grid">
+              <label class="check"><input type="checkbox" data-k="allowLan"> 允许局域网连接</label>
+              <label class="check"><input type="checkbox" data-k="ipv6"> 启用 IPv6</label>
+              <label class="check"><input type="checkbox" data-k="unifiedDelay"> 统一延迟（unified-delay）</label>
+              <label class="check"><input type="checkbox" data-k="tcpConcurrent"> TCP 并发连接（tcp-concurrent）</label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>DNS</h2>
+            <div class="check-grid">
+              <label class="check"><input type="checkbox" data-k="dnsEnable"> 启用 DNS 模块</label>
+              <label class="check"><input type="checkbox" data-k="fallbackGeoIP"> 解析结果不是中国 IP 时使用备用 DNS</label>
+            </div>
+            <div class="form-grid">
+              <label>模式
+                <select data-k="enhancedMode"><option value="fake-ip">fake-ip（推荐）</option><option value="redir-host">redir-host</option></select></label>
+              <label>fake-ip 地址段<input data-k="fakeIPRange"></label>
+            </div>
+            <div class="form-grid">
+              <label>默认 DNS <small>用于解析 DoH 域名，必须是 IP</small><textarea data-list="defaultNameservers" rows="3" class="mono" spellcheck="false"></textarea></label>
+              <label>主 DNS<textarea data-list="nameservers" rows="3" class="mono" spellcheck="false"></textarea></label>
+              <label>备用 DNS（境外）<textarea data-list="fallback" rows="3" class="mono" spellcheck="false"></textarea></label>
+              <label>fake-ip 过滤 <small>这些域名返回真实 IP</small><textarea data-list="fakeIPFilter" rows="3" class="mono" spellcheck="false"></textarea></label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>规则数据（GeoSite / GeoIP）</h2>
+            <div class="form-grid">
+              <label>下载源
+                <select data-k="geoxSource">
+                  <option value="jsdelivr">jsDelivr 镜像（国内可访问，推荐）</option>
+                  <option value="github">GitHub</option>
+                  <option value="default">mihomo 默认</option>
+                </select></label>
+              <label>自动更新间隔（小时）<input type="number" data-k="geoUpdateHours" min="1" max="720"></label>
+            </div>
+            <label class="check"><input type="checkbox" data-k="geoAutoUpdate"> 自动更新规则数据</label>
+          </div>
+        </div>
+
+        <div class="mh-preview">
+          <div class="card">
+            <div class="card-head">
+              <h2>实时预览</h2>
+              <select id="mh-user" class="small-select"></select>
+            </div>
+            <div id="mh-error" class="alert warn hidden"></div>
+            <textarea id="mh-out" class="mono" readonly spellcheck="false"></textarea>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn small" id="btn-mh-copy">复制</button>
+              <button class="btn small" id="btn-mh-download">下载 config.yaml</button>
+              <span class="muted small" id="mh-dirty"></span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

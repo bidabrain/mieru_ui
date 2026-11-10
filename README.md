@@ -32,7 +32,8 @@
 | --- | --- |
 | 概览 | CPU / 内存 / 磁盘 / 实时网速 / 连接数；mita 启动、停止、重启、重新应用配置；查看 `mita get users`、`mita get metrics` |
 | 用户管理 | 添加、编辑、删除、启用/禁用、批量添加；流量配额（滑动周期）；到期时间（到期自动禁用）；是否允许访问服务器内网/回环地址 |
-| 分享 | `mierus://` 链接 + 二维码；mieru 客户端 `client.json`；mihomo（Clash.Meta）配置 |
+| 分享 | `mierus://` 链接 + 二维码；mieru 客户端 `client.json`；mihomo（Clash.Meta）完整配置或仅节点 |
+| mihomo 配置 | 定制 mihomo 完整配置模板：绕过大陆 / GFW 列表 / 全局三种分流模式，广告拦截，指定服务强制代理，自定义直连/代理/拦截域名和高级规则，代理组、DNS、规则数据源；实时预览。分享时按模板实时生成 |
 | 端口与协议 | 多个 TCP/UDP 单端口或端口范围，自动检查重叠 |
 | 防火墙 | ufw / firewalld 状态查看；关键端口检查和一键放行；添加/删除规则；启用/关闭（带防锁死保护） |
 | 高级设置 | MTU、日志级别、DNS 双栈策略、多路复用、握手模式；`trafficPattern`（流量混淆）、`egress`（出站代理，如 WARP）JSON 编辑；配置预览 |
@@ -121,6 +122,23 @@ bash install.sh local
 
 每次修改用户，面板都会自动把配置应用到 mita，不需要手动重启。
 
+### mihomo 配置
+
+在这里定制一份 mihomo（Clash.Meta）完整配置的模板。保存后，「用户管理 → 分享 → mihomo」里的配置会按模板**实时生成**：每次打开分享都使用当前的模板、端口和该用户的账号密码，无需手动同步。
+
+- **分流模式**
+  - 绕过大陆（推荐）：`GEOSITE,cn` 和 `GEOIP,CN` 直连，其余走代理。
+  - GFW 列表：只有 `GEOSITE,gfw` 走代理，其余直连。
+  - 全局代理：除直连规则外全部走代理。
+- **规则选项**：局域网直连、广告拦截（`category-ads-all`）、Apple 和微软国内服务直连；可以勾选 Google、YouTube、Telegram、AI 服务（ChatGPT / Claude / Gemini 等）、GitHub、Netflix 等服务强制走代理。
+- **自定义规则**：直连、代理、拦截域名各一个列表，每行一个，按后缀匹配。另有「高级规则」，每行一条 `类型,值,DIRECT|REJECT|PROXY[,no-resolve]`，`PROXY` 代表主代理组。
+- **规则优先级**（从高到低）：高级规则 → 拦截域名 → 直连域名 → 代理域名 → 局域网 → 广告 → 强制代理的服务 → Apple/微软 → 分流模式。
+- **代理组**：主代理组（手动选择）、自动选择（url-test）、故障转移（fallback）。每个 mieru 端口生成一个节点。
+- **DNS**：fake-ip / redir-host、国内主 DNS、境外备用 DNS、fake-ip 过滤列表。默认值适合国内使用。
+- **规则数据**：GeoSite / GeoIP 数据默认从 jsDelivr 镜像下载（国内可访问），可设置自动更新间隔。
+- 右侧**实时预览**可以选择任意用户，查看按当前表单（包括未保存的修改）生成的配置。
+- 模板会包含在面板备份里。
+
 ### 端口与协议
 
 - 支持单端口（如 `2012`）和端口范围（如 `3000-3010`）。
@@ -197,7 +215,11 @@ mieru start
 
 ### 3. mihomo / Clash.Meta
 
-复制生成的内容，粘贴到配置文件的 `proxies:` 部分。每个端口会生成一个节点。需要 mihomo 1.18.5 或更高版本；使用 UDP 传输需要更新的版本。Clash Verge Rev、FlClash 等基于 mihomo 内核的客户端都可以使用。
+默认生成**完整配置**（按「mihomo 配置」页面的模板），复制或下载 `config.yaml` 后，可直接导入 Clash Verge Rev、FlClash 等基于 mihomo 内核的客户端。
+
+如果你已有自己的配置，只想加节点，勾选「只显示节点（proxies）」，把内容粘贴到配置文件的 `proxies:` 部分即可。
+
+需要 mihomo 1.18.5 或更高版本才支持 mieru；使用 UDP 传输需要更新的版本。
 
 ---
 

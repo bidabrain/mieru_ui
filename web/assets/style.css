@@ -181,6 +181,25 @@ pre.out.tall { max-height: calc(100vh - 160px); min-height: 300px; margin: 0; }
 .fw-add { display: grid; grid-template-columns: 1fr 160px auto; gap: 8px; margin-bottom: 12px; }
 details.card summary { cursor: pointer; font-weight: 500; }
 
+h3 { font-size: 13.5px; margin: 16px 0 8px; color: var(--muted); font-weight: 500; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 16px; margin-bottom: 4px; }
+.form-grid.three { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.radio-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.radio-card { flex-direction: row; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-weight: 400; }
+.radio-card input { width: auto; margin-top: 3px; }
+.radio-card div { display: flex; flex-direction: column; gap: 2px; }
+.radio-card span { color: var(--muted); font-size: 12.5px; }
+.radio-card:has(input:checked) { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.mh-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 16px; align-items: start; }
+.mh-preview { position: sticky; top: 16px; }
+#mh-out { height: calc(100vh - 190px); min-height: 360px; white-space: pre; overflow: auto; }
+.small-select { width: auto; height: 30px; padding: 0 8px; font-size: 12.5px; }
+@media (max-width: 1100px) {
+  .mh-layout { grid-template-columns: 1fr; }
+  .mh-preview { position: static; }
+  #mh-out { height: 420px; }
+}
+
 /* toasts */
 #toasts { position: fixed; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 100; max-width: calc(100vw - 32px); }
 .toast { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--ok); padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); max-width: 420px; word-break: break-word; }

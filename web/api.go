@@ -349,23 +349,24 @@ func (s *Server) shareUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := d.Users[i]
-	host := strings.TrimSpace(r.URL.Query().Get("host"))
-	if host == "" {
-		host = d.Settings.PublicHost
-	}
-	if host == "" {
-		host = service.HostFromRequest(r.Host)
-	}
+	host := s.shareHost(r, d.Settings.PublicHost)
 	clientJSON, err := service.ClientJSON(u, host, d.Server)
 	if err != nil {
 		fail(w, 500, err.Error())
 		return
 	}
+	// The full mihomo config is rendered from the saved template every time, so it
+	// always reflects the current template, ports and user credentials.
+	mihomo, err := service.BuildMihomo(u, host, d.Server, d.Mihomo)
+	if err != nil {
+		mihomo = "# " + err.Error() + "\n"
+	}
 	ok(w, map[string]any{
-		"host":       host,
-		"link":       service.MierusLink(u, host, d.Server),
-		"clientJSON": string(clientJSON),
-		"mihomo":     service.MihomoYAML(u, host, d.Server),
+		"host":          host,
+		"link":          service.MierusLink(u, host, d.Server),
+		"clientJSON":    string(clientJSON),
+		"mihomo":        mihomo,
+		"mihomoProxies": service.MihomoYAML(u, host, d.Server),
 	})
 }
 
@@ -624,17 +625,18 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 }
 
 type backupDoc struct {
-	App     string              `json:"app"`
-	Version string              `json:"version"`
-	Server  database.ServerConf `json:"server"`
-	Users   []database.User     `json:"users"`
+	App     string               `json:"app"`
+	Version string               `json:"version"`
+	Server  database.ServerConf  `json:"server"`
+	Users   []database.User      `json:"users"`
+	Mihomo  *database.MihomoConf `json:"mihomo,omitempty"`
 }
 
 func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 	d := s.store.Snapshot()
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf(`attachment; filename="mieru-ui-backup-%s.json"`, time.Now().Format("20060102-150405")))
-	writeJSON(w, 200, backupDoc{App: "mieru-ui", Version: config.Version, Server: d.Server, Users: d.Users})
+	writeJSON(w, 200, backupDoc{App: "mieru-ui", Version: config.Version, Server: d.Server, Users: d.Users, Mihomo: &d.Mihomo})
 }
 
 func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
@@ -666,6 +668,12 @@ func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
 			users = []database.User{}
 		}
 		d.Server, d.Users, d.NextUserID = b.Server, users, next
+		if b.Mihomo != nil {
+			if err := service.ValidateMihomo(b.Mihomo); err != nil {
+				return fmt.Errorf("备份中的 mihomo 模板无效: %v", err)
+			}
+			d.Mihomo = *b.Mihomo
+		}
 		return nil
 	})
 	if err != nil {

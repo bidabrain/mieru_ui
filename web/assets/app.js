@@ -518,9 +518,13 @@ async function shareModal(u, host = '') {
       <p class="muted small">使用 <span class="mono">mieru apply config client.json</span> 导入，然后 <span class="mono">mieru start</span>。本地 SOCKS5 端口 1080，HTTP 端口 8080。</p>
     </div>
     <div data-pane="mihomo" class="hidden">
-      <textarea class="mono" rows="14" readonly>${esc(s.mihomo)}</textarea>
-      <div class="btn-row" style="margin-top:8px"><button class="btn primary" type="button" data-copy="mihomo">复制</button></div>
-      <p class="muted small">粘贴到 mihomo 配置的 proxies 段（需要 mihomo 1.18.5+ 才支持 mieru）。</p>
+      <label class="check" style="margin-bottom:8px"><input type="checkbox" id="s-mh-only"> 只显示节点（proxies），用于粘贴到已有配置</label>
+      <textarea class="mono" rows="16" readonly id="s-mh-text" spellcheck="false">${esc(s.mihomo)}</textarea>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn primary" type="button" id="s-mh-copy">复制</button>
+        <button class="btn" type="button" id="s-mh-dl">下载 config.yaml</button>
+      </div>
+      <p class="muted small">完整配置按「mihomo 配置」页面的模板实时生成，可直接导入 Clash Verge Rev、FlClash 等 mihomo 内核客户端（需要 mihomo 1.18.5+ 才支持 mieru）。</p>
     </div>
   `);
   const body = $('#modal-body');
@@ -530,6 +534,10 @@ async function shareModal(u, host = '') {
   });
   $$('[data-copy]', body).forEach(b => b.onclick = () => copyText(s[b.dataset.copy]));
   $('#s-dl').onclick = () => download(`mieru-${u.name}.json`, s.clientJSON);
+  const mhText = () => ($('#s-mh-only').checked ? s.mihomoProxies : s.mihomo);
+  $('#s-mh-only').onchange = () => { $('#s-mh-text').value = mhText(); };
+  $('#s-mh-copy').onclick = () => copyText(mhText());
+  $('#s-mh-dl').onclick = () => download(`mihomo-${u.name}.yaml`, mhText(), 'text/yaml');
   $('#s-host-apply').onclick = () => shareModal(u, $('#s-host').value.trim());
 }
 
@@ -647,6 +655,97 @@ $('#btn-preview').onclick = e => withBusy(e.target, async () => {
     <div><strong>mita 当前生效的配置</strong> <span class="muted small">(mita describe config)</span><pre class="mono out">${esc(p.effective || '(mita 未安装或无输出)')}</pre></div>
   `);
 });
+
+// ---------- mihomo template ----------
+let mh = null;
+let mhSaved = '';
+let mhTimer = null;
+const mhSection = () => $('[data-section="mihomo"]');
+
+function fillMihomo(c) {
+  const sec = mhSection();
+  $$('[data-k]', sec).forEach(el => {
+    const v = c[el.dataset.k];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (el.type === 'radio') el.checked = el.value === v;
+    else el.value = v ?? '';
+  });
+  $$('[data-list]', sec).forEach(el => { el.value = (c[el.dataset.list] || []).join('\n'); });
+  $$('#mh-services input', sec).forEach(el => { el.checked = (c.proxyServices || []).includes(el.value); });
+}
+
+function readMihomo() {
+  const sec = mhSection();
+  const c = {};
+  $$('[data-k]', sec).forEach(el => {
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') c[k] = el.checked;
+    else if (el.type === 'radio') { if (el.checked) c[k] = el.value; }
+    else if (el.type === 'number') c[k] = parseInt(el.value, 10) || 0;
+    else c[k] = el.value.trim();
+  });
+  $$('[data-list]', sec).forEach(el => {
+    c[el.dataset.list] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+  });
+  c.proxyServices = $$('#mh-services input:checked', sec).map(el => el.value);
+  return c;
+}
+
+function markMihomoDirty() {
+  $('#mh-dirty').textContent = JSON.stringify(readMihomo()) === mhSaved ? '' : '● 有未保存的修改';
+}
+
+async function previewMihomo() {
+  markMihomoDirty();
+  try {
+    const r = await api('POST', 'api/mihomo/preview', { conf: readMihomo(), userId: Number($('#mh-user').value) || 0 });
+    $('#mh-out').value = r.obj;
+    $('#mh-error').classList.add('hidden');
+  } catch (e) {
+    $('#mh-error').textContent = e.message;
+    $('#mh-error').classList.remove('hidden');
+  }
+}
+
+function schedulePreview() {
+  clearTimeout(mhTimer);
+  mhTimer = setTimeout(previewMihomo, 350);
+}
+
+loaders.mihomo = async () => {
+  try {
+    mh = (await api('GET', 'api/mihomo')).obj;
+    users = (await api('GET', 'api/users')).obj || [];
+  } catch (e) { toast(e.message, 'err'); return; }
+  $('#mh-services').innerHTML = mh.services.map(s =>
+    `<label class="check"><input type="checkbox" value="${esc(s.id)}"> ${esc(s.label)}</label>`).join('');
+  const sel = $('#mh-user');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="0">示例用户</option>' +
+    users.map(u => `<option value="${u.id}">预览：${esc(u.name)}</option>`).join('');
+  sel.value = prev && $(`option[value="${prev}"]`, sel) ? prev : (users[0] ? String(users[0].id) : '0');
+  fillMihomo(mh.conf);
+  mhSaved = JSON.stringify(readMihomo());
+  previewMihomo();
+};
+
+mhSection().addEventListener('input', e => { if (e.target.id !== 'mh-out') schedulePreview(); });
+mhSection().addEventListener('change', e => { if (e.target.id !== 'mh-out') schedulePreview(); });
+
+$('#btn-mh-save').onclick = e => withBusy(e.target, async () => {
+  const r = await api('PUT', 'api/mihomo', readMihomo());
+  report(r);
+  fillMihomo(r.obj);
+  mhSaved = JSON.stringify(readMihomo());
+  previewMihomo();
+});
+$('#btn-mh-defaults').onclick = async () => {
+  if (!await confirmDialog('恢复默认', '表单将恢复为默认模板（点「保存」后才会生效）。确定吗？')) return;
+  fillMihomo(mh.defaults);
+  previewMihomo();
+};
+$('#btn-mh-copy').onclick = () => copyText($('#mh-out').value);
+$('#btn-mh-download').onclick = () => download('config.yaml', $('#mh-out').value, 'text/yaml');
 
 // ---------- firewall ----------
 let fw = null;
