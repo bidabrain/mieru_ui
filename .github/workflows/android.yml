@@ -1,0 +1,80 @@
+name: android
+
+on:
+  push:
+    tags: ["android-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: android/core/go.mod
+          cache-dependency-path: android/core/go.sum
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF_NAME" == android-v* ]]; then V="${GITHUB_REF_NAME#android-v}"; else V="0.0.0-dev"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Test core
+        working-directory: android/core
+        run: go test -tags cmfa,with_gvisor ./...
+
+      - name: Build core (gomobile)
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: bash android/core/build.sh
+
+      - name: Build APKs
+        working-directory: android
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Collect
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          mkdir -p dist
+          for f in android/app/build/outputs/apk/release/app-*-release.apk; do
+            abi=$(basename "$f" | sed -E 's/^app-(.*)-release\.apk$/\1/')
+            cp "$f" "dist/mieru-android-$V-$abi.apk"
+          done
+          (cd dist && sha256sum *.apk > SHA256SUMS-android && cat SHA256SUMS-android)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mieru-android-${{ steps.ver.outputs.version }}
+          path: dist/*
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        with:
+          name: Mieru Android ${{ steps.ver.outputs.version }}
+          # Keep "latest" pointing at the panel release: install.sh resolves releases/latest.
+          make_latest: false
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS-android
+          body: |
+            Mieru Android 客户端 ${{ steps.ver.outputs.version }}
+
+            - 大多数手机下载 `arm64-v8a`；不确定就下载 `universal`。
+            - 所有版本使用同一个固定签名，可直接覆盖安装；App 内「设置 → 检查更新」也能自动下载安装。

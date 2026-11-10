@@ -17,6 +17,7 @@
 - [首次使用](#首次使用)
 - [面板功能说明](#面板功能说明)
 - [客户端连接](#客户端连接)
+- [Android 客户端](#android-客户端)
 - [命令行](#命令行)
 - [卸载](#卸载)
 - [安全建议](#安全建议)
@@ -220,6 +221,47 @@ mieru start
 如果你已有自己的配置，只想加节点，勾选「只显示节点（proxies）」，把内容粘贴到配置文件的 `proxies:` 部分即可。
 
 需要 mihomo 1.18.5 或更高版本才支持 mieru；使用 UDP 传输需要更新的版本。
+
+---
+
+## Android 客户端
+
+`android/` 目录是一个独立的 mieru 安卓客户端（Mieru，图标取「見える」之意：一只眼睛站在「儿」上，即「見」字的本义）。
+
+- **只需要 `mierus://` 分享链接**：扫面板分享页的二维码、从剪贴板粘贴，或直接点开链接即可导入；也支持面板导出的 mieru 客户端 JSON
+- **分流（参考 husi）**：绕过大陆 / GFW 列表 / 全局 / 直连四种模式；绕过局域网、拦截广告、Apple/微软国内直连、流量嗅探；自定义规则（域名后缀、域名、关键词、GEOSITE、GEOIP、IP 段、端口 → 代理 / 直连 / 拦截，可排序）；分应用代理；直连 / 远程 DNS、Fake-IP
+- **内核**：mihomo（其 mieru 出站直接使用 mieru 官方 Go 库，App 内升级到 mieru 最新版），以 VpnService + TUN（gVisor）接管全局流量；配置由 App 根据节点和分流设置实时生成，用户无需接触 Clash 配置
+- **界面**：Material 3 Expressive + 磨砂玻璃（Android 12+ 实时背景模糊），支持深色模式和动态取色
+- 节点测速、实时网速与流量、运行日志、快捷设置磁贴、本地 HTTP/SOCKS5 端口（默认 `127.0.0.1:17890`）
+- **应用内更新**：检查本仓库 `android-v*` Release，下载后直接覆盖安装
+
+### 下载安装
+
+在 [Releases](https://github.com/bidabrain/mieru_ui/releases) 中找到 `Mieru Android x.y.z`（注意不是标记为 Latest 的面板版本），大多数手机下载 `mieru-android-x.y.z-arm64-v8a.apk`，不确定就下 `universal`。要求 Android 8.0+。
+
+首次连接时会依次请求：通知权限（显示网速，可拒绝）、附近设备 / 本地网络权限（Android 17+，仅在需要访问局域网地址时用到，可拒绝）、VPN 权限（必须允许）。
+
+> 所有 APK 都用仓库里固定的调试签名（`android/app/debug.keystore`，公开的）签名，所以新版本总能覆盖安装。代价是任何人都能用同一个签名打包——请只从本仓库 Release 或 App 内更新下载。
+
+### 发布新版本
+
+推送 `android-v1.2.3` 形式的 tag，`.github/workflows/android.yml` 会编译 Go 内核（gomobile）和 APK，并发布 Release（不会占用 Latest，面板安装脚本不受影响）。
+
+### 本地编译
+
+需要 Go、JDK 17+、Android SDK（含 NDK）：
+
+```bash
+bash android/core/build.sh
+```
+
+```bash
+cd android && ./gradlew assembleRelease
+```
+
+内核测试：`cd android/core && go test -tags cmfa,with_gvisor ./...`
+
+Android 部分链接了 mihomo（GPL-3.0），因此 `android/` 目录以 GPL-3.0 发布，见 `android/LICENSE`。
 
 ---
 
@@ -462,10 +504,12 @@ web/                 HTTP 服务、登录会话、API
 web/assets/          前端（原生 JS，编译时嵌入二进制）
 install.sh           安装 / 升级 / 卸载脚本
 build.sh             交叉编译脚本
+android/core/        Android 内核（Go，gomobile）：链接解析、mihomo 配置生成、启停 TUN
+android/app/         Android App（Kotlin + Jetpack Compose）
 ```
 
 ---
 
 ## License
 
-MIT
+面板：MIT。Android 客户端（`android/`）：GPL-3.0。

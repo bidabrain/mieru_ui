@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+app/libs/*.aar
+app/libs/*.jar
+app/src/main/assets/geo/
+captures/
