@@ -760,7 +760,6 @@ $('#btn-save-settings').onclick = e => withBusy(e.target, async () => {
     basePath: $('#set-base').value.trim(),
     sessionHours: parseInt($('#set-session').value, 10),
     publicHost: $('#set-host').value.trim(),
-    mitaBin: $('#set-mita').value.trim(),
     certFile: $('#set-cert').value.trim(),
     keyFile: $('#set-key').value.trim(),
   }));
@@ -783,6 +782,15 @@ $('#btn-save-cred').onclick = e => withBusy(e.target, async () => {
   $('#cred-old').value = $('#cred-pass').value = '';
   setTimeout(showLogin, 800);
 });
+
+$('#btn-logout-all').onclick = async e => {
+  if (!await confirmDialog('退出所有设备', '所有已登录的会话（包括当前这个）都将失效，需要重新登录。确定吗？')) return;
+  await withBusy(e.target, async () => {
+    await api('POST', 'api/logout-all');
+    toast('已退出所有设备');
+    showLogin();
+  });
+};
 
 $('#restore-file').onchange = async e => {
   const file = e.target.files[0];

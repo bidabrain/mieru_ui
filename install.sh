@@ -85,8 +85,19 @@ install_panel_binary() {
     [[ -n "$tag" ]] || { red "无法获取 ${MIERU_UI_REPO} 的发布版本，可用 'bash install.sh local' 安装本地编译的二进制"; exit 1; }
     tmp="$(mktemp -d)"
     yellow "下载 mieru-ui ${tag}"
-    curl -fL -o "$tmp/p.tar.gz" "https://github.com/${MIERU_UI_REPO}/releases/download/${tag}/mieru-ui-linux-${ARCH}.tar.gz"
-    tar -xzf "$tmp/p.tar.gz" -C "$tmp"
+    local base="https://github.com/${MIERU_UI_REPO}/releases/download/${tag}"
+    local name="mieru-ui-linux-${ARCH}.tar.gz"
+    curl -fL -o "$tmp/$name" "$base/$name"
+    if curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"; then
+      if ! (cd "$tmp" && grep " ${name}\$" SHA256SUMS | sha256sum -c --status -); then
+        rm -rf "$tmp"
+        red "SHA256 校验失败，下载的文件可能被篡改或损坏，已中止安装"; exit 1
+      fi
+      green "SHA256 校验通过"
+    else
+      yellow "该版本没有 SHA256SUMS，跳过校验"
+    fi
+    tar -xzf "$tmp/$name" -C "$tmp"
     install -m 755 "$tmp/mieru-ui" "$INSTALL_DIR/mieru-ui"
     rm -rf "$tmp"
   fi

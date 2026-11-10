@@ -507,14 +507,18 @@ type publicSettings struct {
 	BasePath     string `json:"basePath"`
 	SessionHours int    `json:"sessionHours"`
 	PublicHost   string `json:"publicHost"`
-	MitaBin      string `json:"mitaBin"`
 	CertFile     string `json:"certFile"`
 	KeyFile      string `json:"keyFile"`
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	st := s.store.Snapshot().Settings
-	ok(w, publicSettings{st.ListenIP, st.Port, st.BasePath, st.SessionHours, st.PublicHost, st.MitaBin, st.CertFile, st.KeyFile})
+	ok(w, map[string]any{
+		"listenIP": st.ListenIP, "port": st.Port, "basePath": st.BasePath, "sessionHours": st.SessionHours,
+		"publicHost": st.PublicHost, "certFile": st.CertFile, "keyFile": st.KeyFile,
+		// Shown read-only: the executed binary can only be changed from the server's CLI.
+		"mitaBin": st.MitaBin,
+	})
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -543,13 +547,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.BasePath = NormalizeBasePath(p.BasePath)
-	if strings.TrimSpace(p.MitaBin) == "" {
-		p.MitaBin = "mita"
-	}
 	err := s.store.Update(func(d *database.Data) error {
 		st := &d.Settings
 		st.ListenIP, st.Port, st.BasePath = strings.TrimSpace(p.ListenIP), p.Port, p.BasePath
-		st.SessionHours, st.PublicHost, st.MitaBin = p.SessionHours, strings.TrimSpace(p.PublicHost), strings.TrimSpace(p.MitaBin)
+		st.SessionHours, st.PublicHost = p.SessionHours, strings.TrimSpace(p.PublicHost)
 		st.CertFile, st.KeyFile = strings.TrimSpace(p.CertFile), strings.TrimSpace(p.KeyFile)
 		return nil
 	})
@@ -571,8 +572,8 @@ func (s *Server) putCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Username = strings.TrimSpace(req.Username)
-	if req.Username == "" || len(req.Password) < 6 {
-		fail(w, 400, "用户名不能为空，密码至少 6 位")
+	if req.Username == "" || len(req.Password) < 8 {
+		fail(w, 400, "用户名不能为空，密码至少 8 位")
 		return
 	}
 	err := s.store.Update(func(d *database.Data) error {
@@ -586,6 +587,7 @@ func (s *Server) putCredentials(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	database.RemoveInitialCredentials()
 	okMsg(w, "账号已修改，请重新登录", nil)
 }
 

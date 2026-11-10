@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -84,6 +85,9 @@ type Store struct {
 	mu   sync.RWMutex
 	path string
 	data Data
+
+	// InitialPassword is set only when Open created a brand-new database.
+	InitialPassword string
 }
 
 // RandomHex returns n random bytes hex-encoded.
@@ -117,20 +121,43 @@ func defaults() Data {
 	}
 }
 
+var initialCredsPath string
+
+// InitialCredentialsPath is where a freshly generated admin password is written.
+func InitialCredentialsPath() string { return initialCredsPath }
+
+// RemoveInitialCredentials deletes the initial credentials file once the password was changed.
+func RemoveInitialCredentials() {
+	if initialCredsPath != "" {
+		_ = os.Remove(initialCredsPath)
+	}
+}
+
 // Open loads (or creates) the store at path.
 func Open(path string) (*Store, error) {
 	s := &Store{path: path, data: defaults()}
+	initialCredsPath = filepath.Join(filepath.Dir(path), "initial-credentials.txt")
 	raw, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, err
 		}
-		// Default credentials admin/admin until changed.
-		if err := SetPassword(&s.data.Settings, "admin"); err != nil {
+		// Never ship a well-known default password: generate one and store it in a root-only file.
+		pass := RandomHex(8)
+		if err := SetPassword(&s.data.Settings, pass); err != nil {
 			return nil, err
 		}
-		return s, s.save()
+		if err := s.save(); err != nil {
+			return nil, err
+		}
+		s.InitialPassword = pass
+		content := fmt.Sprintf("mieru-ui initial credentials (delete this file after logging in)\nusername: %s\npassword: %s\n",
+			s.data.Settings.Username, pass)
+		if err := os.WriteFile(initialCredsPath, []byte(content), 0o600); err != nil {
+			return nil, err
+		}
+		return s, nil
 	case err != nil:
 		return nil, err
 	}

@@ -4,6 +4,7 @@ package web
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
@@ -38,6 +39,21 @@ type Server struct {
 type failRecord struct {
 	count int
 	until time.Time
+	last  time.Time
+}
+
+// pruneFails drops stale login-failure records so the map cannot grow without bound.
+func (s *Server) pruneFails() {
+	for range time.Tick(5 * time.Minute) {
+		cutoff := time.Now().Add(-15 * time.Minute)
+		s.failMu.Lock()
+		for ip, rec := range s.fails {
+			if rec.last.Before(cutoff) && rec.until.Before(time.Now()) {
+				delete(s.fails, ip)
+			}
+		}
+		s.failMu.Unlock()
+	}
 }
 
 // NormalizeBasePath turns "abc" / "/abc" / "/abc/" into "/abc/".
@@ -52,11 +68,13 @@ func NormalizeBasePath(p string) string {
 // New creates the server.
 func New(store *database.Store) *Server {
 	d := store.Snapshot()
-	return &Server{
+	s := &Server{
 		store:    store,
 		basePath: NormalizeBasePath(d.Settings.BasePath),
 		fails:    map[string]*failRecord{},
 	}
+	go s.pruneFails()
+	return s
 }
 
 // Run listens and serves forever.
@@ -67,6 +85,12 @@ func (s *Server) Run() error {
 		Addr:              addr,
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// Generous: some actions (mita restart, apt-get install ufw) legitimately take minutes.
+		WriteTimeout:   6 * time.Minute,
+		IdleTimeout:    2 * time.Minute,
+		MaxHeaderBytes: 64 << 10,
+		TLSConfig:      &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 	if d.Settings.CertFile != "" && d.Settings.KeyFile != "" {
 		log.Printf("mieru-ui listening on https://%s%s", addr, s.basePath)
@@ -114,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/settings", s.getSettings)
 	api("PUT /api/settings", s.putSettings)
 	api("PUT /api/settings/credentials", s.putCredentials)
+	api("POST /api/logout-all", s.logoutAll)
 	api("POST /api/panel/restart", s.restartPanel)
 
 	api("GET /api/firewall", s.firewallStatus)
@@ -143,9 +168,15 @@ func (s *Server) Handler() http.Handler {
 
 func securityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "no-referrer")
+		hd := w.Header()
+		hd.Set("X-Frame-Options", "DENY")
+		hd.Set("X-Content-Type-Options", "nosniff")
+		hd.Set("Referrer-Policy", "no-referrer")
+		hd.Set("Cross-Origin-Opener-Policy", "same-origin")
+		// Only our own scripts may run; inline style attributes are used by the UI.
+		hd.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; "+
+			"form-action 'self'; frame-ancestors 'none'")
 		h.ServeHTTP(w, r)
 	})
 }
@@ -285,14 +316,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	set := s.store.Snapshot().Settings
 	if !database.CheckLogin(set, req.Username, req.Password) {
 		s.failMu.Lock()
+		now := time.Now()
 		rec := s.fails[ip]
-		if rec == nil || time.Now().After(rec.until.Add(10*time.Minute)) {
+		// Start a fresh window only if the previous failure was long ago.
+		if rec == nil || now.Sub(rec.last) > 15*time.Minute {
 			rec = &failRecord{}
 			s.fails[ip] = rec
 		}
 		rec.count++
+		rec.last = now
 		if rec.count >= 5 {
-			rec.until = time.Now().Add(5 * time.Minute)
+			rec.until = now.Add(5 * time.Minute)
 			rec.count = 0
 		}
 		s.failMu.Unlock()
@@ -310,4 +344,16 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: s.basePath, MaxAge: -1, HttpOnly: true})
 	ok(w, nil)
+}
+
+// logoutAll rotates the session secret, which invalidates every issued cookie.
+func (s *Server) logoutAll(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.Update(func(d *database.Data) error {
+		d.Settings.SessionSecret = database.RandomHex(32)
+		return nil
+	}); err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	s.logout(w, r)
 }

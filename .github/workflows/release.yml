@@ -21,4 +21,5 @@ jobs:
         with:
           files: |
             dist/*.tar.gz
+            dist/SHA256SUMS
             install.sh

@@ -10,3 +10,4 @@ for arch in amd64 arm64; do
   tar -czf "dist/mieru-ui-linux-${arch}.tar.gz" -C dist --transform "s|mieru-ui-linux-${arch}|mieru-ui|" "mieru-ui-linux-${arch}"
   echo "built $out"
 done
+(cd dist && sha256sum mieru-ui-linux-*.tar.gz > SHA256SUMS && cat SHA256SUMS)

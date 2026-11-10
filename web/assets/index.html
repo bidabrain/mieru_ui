@@ -236,7 +236,7 @@
           <label>面板路径 <small>建议使用随机路径</small><input id="set-base"></label>
           <label>登录有效期（小时）<input type="number" id="set-session" min="1"></label>
           <label>分享地址 <small>域名或 IP，留空自动使用当前访问地址</small><input id="set-host"></label>
-          <label>mita 路径<input id="set-mita"></label>
+          <label>mita 路径 <small>只读，出于安全考虑仅能在服务器上用 <span class="mono">mieru-ui setting -mita</span> 修改</small><input id="set-mita" readonly></label>
           <label>TLS 证书文件路径<input id="set-cert" placeholder="/root/cert/fullchain.pem"></label>
           <label>TLS 私钥文件路径<input id="set-key" placeholder="/root/cert/privkey.pem"></label>
         </div>
@@ -252,7 +252,11 @@
           <label>新用户名<input id="cred-user" autocomplete="username"></label>
           <label>新密码<input type="password" id="cred-pass" autocomplete="new-password"></label>
         </div>
-        <div class="btn-row"><button class="btn primary" id="btn-save-cred">修改</button></div>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-save-cred">修改</button>
+          <button class="btn danger" id="btn-logout-all">退出所有设备</button>
+        </div>
+        <p class="muted small" style="margin-bottom:0">修改密码或「退出所有设备」都会让所有已登录的浏览器（包括本机）立即失效。</p>
       </div>
       <div class="card">
         <h2>备份与恢复</h2>

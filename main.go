@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 
 	"mieru-ui/config"
 	"mieru-ui/database"
@@ -20,10 +21,12 @@ Usage:
   mieru-ui [run]                 start the panel
   mieru-ui setting [flags]       change panel settings
       -username string           admin username
-      -password string           admin password
+      -password string           admin password (at least 8 characters)
       -port int                  panel port
       -basepath string           panel URL path, e.g. /secret/
       -listen string             listen IP ("" = all)
+      -mita string               path or name of the mita binary
+      -logout-all                invalidate every login session
       -show                      print current settings
   mieru-ui version               print version
 
@@ -64,6 +67,9 @@ func openStore() *database.Store {
 func run() {
 	store := openStore()
 	d := store.Snapshot()
+	if store.InitialPassword != "" {
+		log.Printf("created new panel database; random admin credentials were written to %s", database.InitialCredentialsPath())
+	}
 	if database.CheckLogin(d.Settings, "admin", "admin") {
 		log.Println("WARNING: panel is using the default credentials admin/admin, change them immediately")
 	}
@@ -90,10 +96,23 @@ func setting(args []string) {
 	port := fs.Int("port", 0, "panel port")
 	basePath := fs.String("basepath", "", "panel base path")
 	listen := fs.String("listen", "\x00", "listen IP")
+	mita := fs.String("mita", "", "mita binary")
+	logoutAll := fs.Bool("logout-all", false, "invalidate all sessions")
 	show := fs.Bool("show", false, "show settings")
 	_ = fs.Parse(args)
 
+	if *password != "" && len(*password) < 8 {
+		log.Fatal("password must be at least 8 characters")
+	}
+	if *mita != "" {
+		if _, err := exec.LookPath(*mita); err != nil {
+			log.Fatalf("mita binary %q not found or not executable: %v", *mita, err)
+		}
+	}
+
 	store := openStore()
+	changed := *username != "" || *password != "" || *port != 0 || *basePath != "" ||
+		*listen != "\x00" || *mita != "" || *logoutAll
 	err := store.Update(func(d *database.Data) error {
 		s := &d.Settings
 		if *username != "" {
@@ -113,15 +132,26 @@ func setting(args []string) {
 		if *listen != "\x00" {
 			s.ListenIP = *listen
 		}
+		if *mita != "" {
+			s.MitaBin = *mita
+		}
+		if *logoutAll {
+			s.SessionSecret = database.RandomHex(32)
+		}
 		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if *show || (*username == "" && *password == "" && *port == 0 && *basePath == "" && *listen == "\x00") {
+	if *password != "" {
+		database.RemoveInitialCredentials()
+	} else if store.InitialPassword != "" {
+		fmt.Printf("created new database; initial credentials: %s\n", database.InitialCredentialsPath())
+	}
+	if *show || !changed {
 		s := store.Snapshot().Settings
-		fmt.Printf("username: %s\nport:     %d\nbasePath: %s\nlisten:   %q\ndata:     %s\n",
-			s.Username, s.Port, web.NormalizeBasePath(s.BasePath), s.ListenIP, config.DBPath())
+		fmt.Printf("username: %s\nport:     %d\nbasePath: %s\nlisten:   %q\nmita:     %s\ndata:     %s\n",
+			s.Username, s.Port, web.NormalizeBasePath(s.BasePath), s.ListenIP, s.MitaBin, config.DBPath())
 		return
 	}
 	fmt.Println("settings updated; restart the panel (systemctl restart mieru-ui) to take effect")
