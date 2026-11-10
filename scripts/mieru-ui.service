@@ -1,0 +1,18 @@
+[Unit]
+Description=mieru-ui web panel
+Documentation=https://github.com/enfein/mieru
+After=network-online.target mita.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/usr/local/mieru-ui
+ExecStart=/usr/local/mieru-ui/mieru-ui run
+Restart=always
+RestartSec=3
+# Needs root to talk to the mita daemon and read journald logs.
+User=root
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

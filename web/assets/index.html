@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>mieru-ui</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-view" class="login-wrap hidden">
+  <form id="login-form" class="card login-card">
+    <div class="brand big">mieru<span>-ui</span></div>
+    <p class="muted">mieru 代理服务端管理面板</p>
+    <label>用户名<input name="username" autocomplete="username" required></label>
+    <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn primary block" type="submit">登录</button>
+  </form>
+</div>
+
+<!-- App -->
+<div id="app-view" class="layout hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">mieru<span>-ui</span></div>
+    <nav>
+      <a data-page="dashboard">概览</a>
+      <a data-page="users">用户管理</a>
+      <a data-page="ports">端口与协议</a>
+      <a data-page="firewall">防火墙</a>
+      <a data-page="advanced">高级设置</a>
+      <a data-page="panel">面板设置</a>
+      <a data-page="logs">日志</a>
+    </nav>
+    <div class="sidebar-foot">
+      <span id="me-name"></span> · <span id="me-version"></span>
+      <button class="btn small ghost" id="btn-theme" title="切换主题">◐</button>
+      <button class="btn small ghost" id="btn-logout">退出</button>
+    </div>
+  </aside>
+  <button class="menu-toggle" id="menu-toggle">☰</button>
+
+  <main class="content">
+    <div id="default-pass-warn" class="alert warn hidden">
+      当前仍在使用默认账号 admin/admin，请立即到「面板设置」中修改。
+    </div>
+
+    <!-- Dashboard -->
+    <section data-section="dashboard" class="hidden">
+      <h1>概览</h1>
+      <div class="grid stats">
+        <div class="card stat"><div class="stat-label">CPU</div><div class="stat-value" id="st-cpu">-</div><div class="bar"><i id="bar-cpu"></i></div></div>
+        <div class="card stat"><div class="stat-label">内存</div><div class="stat-value" id="st-mem">-</div><div class="bar"><i id="bar-mem"></i></div></div>
+        <div class="card stat"><div class="stat-label">磁盘</div><div class="stat-value" id="st-disk">-</div><div class="bar"><i id="bar-disk"></i></div></div>
+        <div class="card stat"><div class="stat-label">运行时间</div><div class="stat-value" id="st-uptime">-</div><div class="muted small" id="st-load"></div></div>
+        <div class="card stat"><div class="stat-label">网络 ↑ / ↓ (实时)</div><div class="stat-value" id="st-speed">-</div><div class="muted small" id="st-net"></div></div>
+        <div class="card stat"><div class="stat-label">连接数 TCP / UDP</div><div class="stat-value" id="st-conns">-</div><div class="muted small" id="st-os"></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>mita 服务</h2>
+          <span class="badge" id="mita-badge">-</span>
+        </div>
+        <div class="kv">
+          <div>版本</div><div id="mita-version">-</div>
+          <div>状态</div><div id="mita-status" class="mono">-</div>
+          <div>用户</div><div id="mita-users">-</div>
+          <div>上次应用</div><div id="mita-apply">-</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" data-mita="start">启动</button>
+          <button class="btn" data-mita="restart">重启</button>
+          <button class="btn danger" data-mita="stop">停止</button>
+          <button class="btn" data-mita="apply">重新应用配置</button>
+        </div>
+        <pre id="mita-steps" class="mono out hidden"></pre>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <div class="card-head"><h2>mita get users</h2><button class="btn small" id="btn-mita-users">刷新</button></div>
+          <pre class="mono out" id="mita-users-out">点击刷新</pre>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>mita get metrics</h2><button class="btn small" id="btn-mita-metrics">刷新</button></div>
+          <pre class="mono out" id="mita-metrics-out">点击刷新</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Users -->
+    <section data-section="users" class="hidden">
+      <div class="page-head">
+        <h1>用户管理</h1>
+        <div class="btn-row">
+          <input id="user-search" placeholder="搜索用户名/备注" class="search">
+          <button class="btn" id="btn-batch">批量添加</button>
+          <button class="btn primary" id="btn-add-user">添加用户</button>
+        </div>
+      </div>
+      <div class="card table-card">
+        <table class="table">
+          <thead><tr><th>启用</th><th>用户名</th><th>备注</th><th>流量配额</th><th>到期时间</th><th>权限</th><th></th></tr></thead>
+          <tbody id="user-rows"></tbody>
+        </table>
+        <div id="user-empty" class="empty hidden">还没有用户，点击右上角「添加用户」。</div>
+      </div>
+    </section>
+
+    <!-- Ports -->
+    <section data-section="ports" class="hidden">
+      <div class="page-head">
+        <h1>端口与协议</h1>
+        <div class="btn-row">
+          <button class="btn" id="btn-add-port">添加端口</button>
+          <button class="btn primary" id="btn-save-ports">保存并应用</button>
+        </div>
+      </div>
+      <div class="card">
+        <p class="muted">mieru 支持 TCP 与 UDP 两种底层传输，可监听单个端口或端口范围。端口范围可以分散流量特征，但需同时在防火墙/安全组中放行。</p>
+        <table class="table">
+          <thead><tr><th>类型</th><th>端口 / 范围</th><th>协议</th><th></th></tr></thead>
+          <tbody id="port-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Firewall -->
+    <section data-section="firewall" class="hidden">
+      <div class="page-head">
+        <h1>防火墙</h1>
+        <div class="btn-row"><button class="btn" id="btn-fw-refresh">刷新</button></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>状态</h2>
+          <span class="badge" id="fw-badge">-</span>
+        </div>
+        <div class="kv">
+          <div>防火墙</div><div id="fw-backend">-</div>
+          <div>默认策略</div><div id="fw-defaults" class="mono">-</div>
+          <div>SSH 端口</div><div id="fw-ssh">-</div>
+        </div>
+        <div id="fw-msg" class="alert warn hidden"></div>
+        <div class="btn-row">
+          <button class="btn primary hidden" id="btn-fw-enable">启用防火墙</button>
+          <button class="btn danger hidden" id="btn-fw-disable">关闭防火墙</button>
+          <button class="btn hidden" id="btn-fw-install">安装 ufw</button>
+        </div>
+        <p class="muted small" style="margin-bottom:0">启用前面板会自动放行 SSH 端口和面板端口，避免把自己锁在服务器外。另外请记得在云服务商的「安全组」中同样放行端口，那是另一层独立的防火墙。</p>
+      </div>
+
+      <div class="card" id="fw-checks-card">
+        <div class="card-head">
+          <h2>关键端口检查</h2>
+          <button class="btn small primary" id="btn-fw-open-mieru">一键放行面板与 mieru 端口</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>用途</th><th>端口</th><th>协议</th><th>状态</th><th></th></tr></thead>
+          <tbody id="fw-checks"></tbody>
+        </table>
+      </div>
+
+      <div class="card" id="fw-rules-card">
+        <div class="card-head"><h2>规则</h2></div>
+        <div class="fw-add">
+          <input id="fw-port" placeholder="端口，如 8443 或 3000-3010">
+          <select id="fw-proto"><option value="tcp">TCP</option><option value="udp">UDP</option><option value="both">TCP + UDP</option></select>
+          <button class="btn primary" id="btn-fw-add">放行</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>规则</th><th>动作</th><th>端口</th><th>协议</th><th></th></tr></thead>
+          <tbody id="fw-rules"></tbody>
+        </table>
+      </div>
+
+      <details class="card">
+        <summary>原始输出</summary>
+        <pre class="mono out" id="fw-raw"></pre>
+      </details>
+    </section>
+
+    <!-- Advanced -->
+    <section data-section="advanced" class="hidden">
+      <div class="page-head">
+        <h1>高级设置</h1>
+        <div class="btn-row">
+          <button class="btn" id="btn-preview">预览 mita 配置</button>
+          <button class="btn primary" id="btn-save-adv">保存并应用</button>
+        </div>
+      </div>
+      <div class="card form-grid">
+        <label>MTU <small>1280-1400，UDP 协议下生效</small><input type="number" id="adv-mtu" min="1280" max="1400"></label>
+        <label>日志级别
+          <select id="adv-log"><option>TRACE</option><option>DEBUG</option><option>INFO</option><option>WARN</option><option>ERROR</option><option>FATAL</option></select>
+        </label>
+        <label>DNS 双栈策略
+          <select id="adv-dual">
+            <option value="">默认</option><option>USE_FIRST_IP</option><option>PREFER_IPv4</option><option>PREFER_IPv6</option><option>ONLY_IPv4</option><option>ONLY_IPv6</option>
+          </select>
+        </label>
+        <label>多路复用（客户端，写入分享链接）
+          <select id="adv-mux">
+            <option value="">默认</option><option>MULTIPLEXING_OFF</option><option>MULTIPLEXING_LOW</option><option>MULTIPLEXING_MIDDLE</option><option>MULTIPLEXING_HIGH</option>
+          </select>
+        </label>
+        <label>握手模式（客户端，写入分享链接）
+          <select id="adv-hs">
+            <option value="">默认</option><option>HANDSHAKE_STANDARD</option><option>HANDSHAKE_NO_WAIT</option>
+          </select>
+        </label>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>流量模式 trafficPattern</h2><button class="btn small" id="btn-tp-template">填入示例</button></div>
+        <p class="muted">用于打乱包长、分片和随机数特征，降低被「全加密流量」启发式规则识别的概率。字段含义请参考 mieru 官方文档 <span class="mono">docs/operation.md</span>。留空表示使用默认值。</p>
+        <textarea id="adv-tp" class="mono" rows="9" spellcheck="false"></textarea>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>出站 egress</h2><button class="btn small" id="btn-egress-template">填入示例</button></div>
+        <p class="muted">把 mita 的出站流量再转发给其他 SOCKS5 代理（例如 WARP），可按域名/IP 规则分流。留空表示直连。</p>
+        <textarea id="adv-egress" class="mono" rows="9" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+    <!-- Panel settings -->
+    <section data-section="panel" class="hidden">
+      <h1>面板设置</h1>
+      <div class="card">
+        <h2>常规</h2>
+        <div class="form-grid">
+          <label>监听 IP <small>留空监听全部</small><input id="set-listen"></label>
+          <label>面板端口<input type="number" id="set-port" min="1" max="65535"></label>
+          <label>面板路径 <small>建议使用随机路径</small><input id="set-base"></label>
+          <label>登录有效期（小时）<input type="number" id="set-session" min="1"></label>
+          <label>分享地址 <small>域名或 IP，留空自动使用当前访问地址</small><input id="set-host"></label>
+          <label>mita 路径<input id="set-mita"></label>
+          <label>TLS 证书文件路径<input id="set-cert" placeholder="/root/cert/fullchain.pem"></label>
+          <label>TLS 私钥文件路径<input id="set-key" placeholder="/root/cert/privkey.pem"></label>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-save-settings">保存</button>
+          <button class="btn" id="btn-restart-panel">重启面板</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>修改管理员账号</h2>
+        <div class="form-grid">
+          <label>原密码<input type="password" id="cred-old" autocomplete="current-password"></label>
+          <label>新用户名<input id="cred-user" autocomplete="username"></label>
+          <label>新密码<input type="password" id="cred-pass" autocomplete="new-password"></label>
+        </div>
+        <div class="btn-row"><button class="btn primary" id="btn-save-cred">修改</button></div>
+      </div>
+      <div class="card">
+        <h2>备份与恢复</h2>
+        <p class="muted">备份包含用户与服务端配置，不包含面板账号。</p>
+        <div class="btn-row">
+          <a class="btn" href="api/backup" download>下载备份</a>
+          <label class="btn">恢复备份<input type="file" id="restore-file" accept=".json,application/json" hidden></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section data-section="logs" class="hidden">
+      <div class="page-head">
+        <h1>日志</h1>
+        <div class="btn-row">
+          <select id="log-unit"><option value="mita">mita</option><option value="panel">面板</option></select>
+          <select id="log-n"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select>
+          <button class="btn primary" id="btn-logs">刷新</button>
+        </div>
+      </div>
+      <pre class="card mono out tall" id="log-out"></pre>
+    </section>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h2 id="modal-title"></h2><button class="btn small ghost" data-close>✕</button></div>
+    <div id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<script src="assets/app.js"></script>
+</body>
+</html>
