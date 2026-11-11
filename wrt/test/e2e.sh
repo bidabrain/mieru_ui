@@ -160,6 +160,16 @@ grep -qi 'example domain' "$LOG/http.txt"
 sleep 1
 grep -q 'CONNECT example.com:80' "$LOG/testsrv.log"
 
+step "HTTP from the router itself to a fake-ip address"
+# The router's own resolver is dnsmasq → core, so its programs get fake-ip answers too.
+FIP=$(x "nslookup example.org 127.0.0.1" 2>/dev/null | grep -o '198\.18\.[0-9]*\.[0-9]*' | head -n1)
+echo "example.org -> $FIP"
+[ -n "$FIP" ]
+x "wget -T 15 -qO- http://$FIP/" > "$LOG/http-router.txt" || { x 'nft list table inet mieru; ip rule'; false; }
+grep -qi 'example domain' "$LOG/http-router.txt"
+sleep 1
+grep -q 'CONNECT example.org:80' "$LOG/testsrv.log"
+
 step "LuCI pages in headless Chrome"
 if [ "$PM" = apk ]; then INSTALL="apk add"; else INSTALL="opkg install"; fi
 x "$INSTALL luci luci-theme-bootstrap" > "$LOG/pkg-luci.txt" 2>&1 || { cat "$LOG/pkg-luci.txt"; false; }

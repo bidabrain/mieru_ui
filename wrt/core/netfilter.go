@@ -18,6 +18,9 @@ var bypass4 = []string{
 	"172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4",
 }
 
+// fakeIPNet is the core's fake-ip range (libcore fake-ip-range 198.18.0.1/16).
+const fakeIPNet = "198.18.0.0/16"
+
 // nftRuleset renders the transparent-proxy rules: forwarded IPv4 TCP/UDP from the LAN
 // interfaces is TPROXY'd to the core; with DNS hijack, LAN port-53 traffic goes to the
 // router's dnsmasq (which forwards to the core).
@@ -39,6 +42,10 @@ func nftRuleset(s *settings) string {
 	}
 
 	b.WriteString("\tchain prerouting {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n")
+	if s.Core.Routing.FakeIP {
+		// The router's own connections to fake-ip addresses, rerouted to lo by the output chain.
+		fmt.Fprintf(&b, "\t\tiifname \"lo\" meta mark 0x%x meta nfproto ipv4 meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:%d accept\n", s.Fwmark, s.Core.Router.TProxyPort)
+	}
 	fmt.Fprintf(&b, "\t\tiifname != %s return\n", lan)
 	b.WriteString("\t\tmeta nfproto != ipv4 return\n")
 	b.WriteString("\t\tmeta l4proto != { tcp, udp } return\n")
@@ -58,6 +65,16 @@ func nftRuleset(s *settings) string {
 	// nft checks protocol context per rule, so tproxy needs its own l3/l4 matches here.
 	fmt.Fprintf(&b, "\t\tmeta nfproto ipv4 meta l4proto { tcp, udp } meta mark set 0x%x tproxy ip to 127.0.0.1:%d accept\n", s.Fwmark, s.Core.Router.TProxyPort)
 	b.WriteString("\t}\n")
+
+	if s.Core.Routing.FakeIP {
+		// The router itself resolves through dnsmasq → core too, so its own programs (wget,
+		// opkg/apk, ntpd…) get fake-ip answers. Mark those connections so the policy route
+		// loops them back through lo into the TPROXY rule above. The core never dials
+		// fake-ip addresses itself, so this cannot loop.
+		b.WriteString("\tchain output {\n\t\ttype route hook output priority mangle; policy accept;\n")
+		fmt.Fprintf(&b, "\t\tmeta nfproto ipv4 meta l4proto { tcp, udp } ip daddr %s meta mark set 0x%x\n", fakeIPNet, s.Fwmark)
+		b.WriteString("\t}\n")
+	}
 
 	if s.DNSHijack {
 		b.WriteString("\tchain dns_hijack {\n\t\ttype nat hook prerouting priority dstnat - 5; policy accept;\n")
