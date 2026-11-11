@@ -277,7 +277,7 @@ Android 部分链接了 mihomo（GPL-3.0），因此 `android/` 目录以 GPL-3.
 - **透明代理**：nftables TPROXY + 策略路由，只处理从局域网接口转发的 IPv4 TCP/UDP，局域网和保留地址不经过代理；服务停止（包括崩溃后由 procd 停止）时会自动删除规则并恢复 dnsmasq
 - 可选 HTTP/SOCKS5 端口供局域网设备手动设置代理；运行日志页
 
-要求：使用 opkg 的 OpenWrt / ImmortalWrt 23.05 或 24.10（fw4 / nftables）。依赖 `kmod-nft-tproxy`、`ip-full`、`ca-bundle`，安装时会自动从软件源下载。
+要求：OpenWrt / ImmortalWrt 23.05、24.10（opkg，`.ipk` 包）或 25.12 及以后（apk，`.apk` 包），使用 fw4 / nftables。依赖 `kmod-nft-tproxy`、`ip-full`、`ca-bundle`，安装时会自动从软件源下载。
 
 支持的平台（`opkg print-architecture` 显示的架构）：
 
@@ -299,11 +299,21 @@ Android 部分链接了 mihomo（GPL-3.0），因此 `android/` 目录以 GPL-3.
 sh -c "$(wget -qO- https://raw.githubusercontent.com/bidabrain/mieru_ui/main/wrt/install.sh)"
 ```
 
-也可以手动安装：在 [Releases](https://github.com/bidabrain/mieru_ui/releases) 中找到 `Mieru OpenWrt x.y.z`，下载 `mieru-wrt_x.y.z-1_<架构>.ipk` 和 `luci-app-mieru_x.y.z-1_all.ipk`（架构用 `opkg print-architecture` 查看，NanoPi R5S 等 RK3568 设备是 `aarch64_generic`），上传到路由器后：
+脚本会自动判断系统用的是 opkg 还是 apk。
 
-```bash
-opkg update && opkg install /tmp/mieru-wrt_*.ipk /tmp/luci-app-mieru_*.ipk
-```
+也可以手动安装：在 [Releases](https://github.com/bidabrain/mieru_ui/releases) 中找到 `Mieru OpenWrt x.y.z`，按系统版本下载两个包（核心 `mieru-wrt_*_<架构>` 和界面 `luci-app-mieru_*_all`），上传到路由器的 `/tmp` 后安装。NanoPi R5S 等 RK3568 设备的架构是 `aarch64_generic`。
+
+- **23.05 / 24.10（opkg）**：下载 `.ipk`，架构用 `opkg print-architecture` 查看。
+
+  ```bash
+  opkg update && opkg install /tmp/mieru-wrt_*.ipk /tmp/luci-app-mieru_*.ipk
+  ```
+
+- **25.12 及以后（apk）**：下载 `.apk`，架构用 `cat /etc/apk/arch` 查看。包没有用发行版的密钥签名，所以要加 `--allow-untrusted`（一键安装脚本会先校验 SHA256）。
+
+  ```bash
+  apk update && apk add --allow-untrusted /tmp/mieru-wrt_*.apk /tmp/luci-app-mieru_*.apk
+  ```
 
 ### 使用
 
@@ -317,7 +327,7 @@ opkg update && opkg install /tmp/mieru-wrt_*.ipk /tmp/luci-app-mieru_*.ipk
 
 ### 发布新版本
 
-推送 `wrt-v1.2.3` 形式的 tag，`.github/workflows/wrt.yml` 会运行测试、为各架构打包 ipk，并在 ImmortalWrt 23.05 容器里做端到端测试（安装、模拟局域网设备经透明代理访问网络、停止后规则清理），然后发布 Release（不占用 Latest）。本地打包：`VERSION=1.2.3 bash wrt/build.sh`（需要 Go，不需要 OpenWrt SDK）。
+推送 `wrt-v1.2.3` 形式的 tag，`.github/workflows/wrt.yml` 会运行测试、为各架构打包 `.ipk` 和 `.apk`，并分别在 ImmortalWrt 23.05（opkg）和 25.12（apk）容器里做端到端测试（安装、模拟局域网设备经透明代理访问网络、LuCI 页面、停止后规则清理），然后发布 Release（不占用 Latest）。本地打包：`VERSION=1.2.3 bash wrt/build.sh` 生成 `.ipk`（需要 Go，不需要 OpenWrt SDK）；`.apk` 需要 apk-tools v3 的 `apk mkpkg`，见 `wrt/build-apk.sh` 开头的说明。
 
 `wrt/` 同样链接了 mihomo，以 GPL-3.0 发布，见 `wrt/LICENSE`。
 
@@ -566,7 +576,7 @@ android/core/        Android 内核（Go，gomobile）：链接解析、mihomo �
 android/app/         Android App（Kotlin + Jetpack Compose）
 wrt/core/            OpenWrt 服务 mieru-wrt（Go）：读取 UCI、启动内核、nftables / dnsmasq
 wrt/luci-app-mieru/  LuCI 页面
-wrt/build.sh         打包 ipk；wrt/install.sh 路由器一键安装
+wrt/build.sh         打包 .ipk；wrt/build-apk.sh 打包 .apk；wrt/install.sh 路由器一键安装
 ```
 
 ---

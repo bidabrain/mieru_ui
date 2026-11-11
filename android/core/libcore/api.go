@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/metacubex/mihomo/component/geodata"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub/executor"
 )
@@ -174,8 +175,18 @@ func UpdateGeoFor(optionsJSON string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := executor.ParseWithBytes(b); err != nil {
+	cfg, err := executor.ParseWithBytes(b)
+	if err != nil {
 		return err
 	}
+	// Parsing only records which databases the rules use; the mode and download URLs are
+	// normally registered when a config is applied, which does not happen in this process.
+	g := cfg.General
+	geodata.SetGeodataMode(g.GeodataMode)
+	geodata.SetLoader(g.GeodataLoader)
+	geodata.SetGeoIpUrl(g.GeoXUrl.GeoIp)
+	geodata.SetGeoSiteUrl(g.GeoXUrl.GeoSite)
+	geodata.SetMmdbUrl(g.GeoXUrl.Mmdb)
+	geodata.SetASNUrl(g.GeoXUrl.ASN)
 	return updateGeo()
 }

@@ -38,16 +38,31 @@ jobs:
           for f in $(find wrt -name '*.json' -path '*root*'); do jq empty "$f"; done
           sh -n wrt/mieru-wrt/root/etc/init.d/mieru
 
-      - name: Build packages
+      - name: Build packages (.ipk, OpenWrt 23.05 / 24.10)
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: bash wrt/build.sh
 
+      - name: Build packages (.apk, OpenWrt 25.12+)
+        run: |
+          if ! docker run --rm -v "$PWD/wrt:/w" -w /w -e VERSION="${{ steps.ver.outputs.version }}" \
+            alpine:edge sh -c "apk --version && sh -x build-apk.sh" > apk-build.log 2>&1; then
+            cat apk-build.log
+            echo "::error title=apk build::$(tail -c 3000 apk-build.log | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            exit 1
+          fi
+          cat apk-build.log
+          sudo chown -R "$(id -u):$(id -g)" wrt/dist
+          (cd wrt/dist && sha256sum -- *.ipk *.apk > SHA256SUMS-wrt && ls -la)
+
       - name: Install headless browser driver
         run: npm install --no-save --no-package-lock --prefix wrt/test puppeteer-core@23.11.1
 
-      - name: End-to-end test in ImmortalWrt 23.05
-        run: bash wrt/test/e2e.sh
+      - name: End-to-end test in ImmortalWrt 23.05 (opkg)
+        run: PM=opkg bash wrt/test/e2e.sh
+
+      - name: End-to-end test in ImmortalWrt 25.12 (apk)
+        run: PM=apk bash wrt/test/e2e.sh
 
       - uses: actions/upload-artifact@v4
         with:
@@ -62,10 +77,14 @@ jobs:
           make_latest: false
           files: |
             wrt/dist/*.ipk
+            wrt/dist/*.apk
             wrt/dist/SHA256SUMS-wrt
           body: |
-            Mieru OpenWrt 插件 ${{ steps.ver.outputs.version }}（ImmortalWrt / OpenWrt 23.05+，opkg）
+            Mieru OpenWrt 插件 ${{ steps.ver.outputs.version }}（ImmortalWrt / OpenWrt 23.05、24.10、25.12）
 
-            - 需要安装两个包：`mieru-wrt_*_<架构>.ipk`（核心服务）和 `luci-app-mieru_*_all.ipk`（界面）。
-            - 架构用 `opkg print-architecture` 查看，例如 NanoPi R5S 是 `aarch64_generic`。
+            - 一键安装：`sh -c "$(wget -qO- https://raw.githubusercontent.com/bidabrain/mieru_ui/main/wrt/install.sh)"`
+            - 手动安装需要两个包：`mieru-wrt_*_<架构>`（核心服务）和 `luci-app-mieru_*_all`（界面）。
+              - 23.05 / 24.10（opkg）：下载 `.ipk`，`opkg install ./*.ipk`；架构用 `opkg print-architecture` 查看。
+              - 25.12 及以后（apk）：下载 `.apk`，`apk add --allow-untrusted ./*.apk`；架构用 `cat /etc/apk/arch` 查看。
+            - NanoPi R5S 等 RK3568 设备的架构是 `aarch64_generic`。
             - 安装后在 LuCI「服务 → Mieru」中导入 mierus:// 链接并启用。

@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/bidabrain/mieru_ui/android/core/libcore"
 )
@@ -222,12 +223,20 @@ func cmdDelay(args []string) error {
 		name = main.get("node", "")
 		testURL = main.get("test_url", testURL)
 	}
-	if len(args) > 0 {
+	var n *uciSection
+	switch {
+	case len(args) == 2 && args[0] == "--json":
+		// A node as LuCI currently holds it (possibly not saved yet).
+		if n, err = nodeFromJSON(args[1]); err != nil {
+			return err
+		}
+	case len(args) > 0:
 		name = args[0]
-	}
-	n := findSection(secs, "node", name)
-	if n == nil {
-		return fmt.Errorf("节点 %q 不存在", name)
+		fallthrough
+	default:
+		if n = findSection(secs, "node", name); n == nil {
+			return fmt.Errorf("节点 %q 不存在（导入或修改后请先保存并应用）", name)
+		}
 	}
 	p, err := nodeProfile(n)
 	if err != nil {
@@ -240,11 +249,45 @@ func cmdDelay(args []string) error {
 	ms, err := libcore.TestDelay(string(pj), testURL, 6000)
 	res := map[string]any{"node": n.Name}
 	if err != nil {
-		res["error"] = err.Error()
+		// mieru keys depend on the clock: a skewed router clock looks like a dead server.
+		res["error"] = fmt.Sprintf("%v（请检查：服务器端口是否放行、用户名密码是否正确、路由器时间是否准确，当前 %s）",
+			err, time.Now().Format("2006-01-02 15:04:05 MST"))
 	} else {
 		res["ms"] = ms
 	}
 	return json.NewEncoder(os.Stdout).Encode(res)
+}
+
+// nodeFromJSON builds a node section from {"name","server","username","password",
+// "port":[...],"mtu","multiplexing","handshake_mode"} (the parse-link output shape).
+func nodeFromJSON(js string) (*uciSection, error) {
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		return nil, fmt.Errorf("节点 JSON 无效: %w", err)
+	}
+	n := &uciSection{Type: "node", Name: "unsaved", Options: map[string]string{}, Lists: map[string][]string{}}
+	for k, v := range raw {
+		switch t := v.(type) {
+		case string:
+			if k == "port" {
+				n.Lists[k] = []string{t}
+			} else {
+				n.Options[k] = t
+			}
+		case float64:
+			n.Options[k] = fmt.Sprint(int(t))
+		case []any:
+			for _, e := range t {
+				if s, ok := e.(string); ok {
+					n.Lists[k] = append(n.Lists[k], s)
+				}
+			}
+		}
+	}
+	if s, ok := raw[".name"].(string); ok && s != "" {
+		n.Name = s
+	}
+	return n, nil
 }
 
 func cmdUpdateGeo() error {

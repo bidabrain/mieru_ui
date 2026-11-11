@@ -85,17 +85,26 @@ return view.extend({
 
 		s.renderRowActions = function(sid) {
 			var td = form.GridSection.prototype.renderRowActions.apply(this, [ sid ]);
-			var out = E('span', { 'style': 'margin-right:.5em;white-space:nowrap' });
+			var out = E('span', { 'style': 'margin-right:.5em;display:inline-block;max-width:22em;white-space:normal;font-size:90%' });
 			var btn = E('button', {
 				'class': 'cbi-button cbi-button-action',
-				'title': '测试到这个节点的延迟（使用已保存的配置）',
+				'title': '测试到这个节点的延迟（未保存的修改也会生效）',
 				'click': ui.createHandlerFn(this, function() {
 					out.textContent = '…';
-					return exec([ 'delay', sid ]).then(function(res) {
+					out.style.color = '';
+					// Test the node as shown here, including changes not yet saved & applied.
+					var node = uci.get('mieru', sid) || {};
+					var js = JSON.stringify({
+						'.name': sid, name: node.name, server: node.server, username: node.username,
+						password: node.password, port: node.port, mtu: node.mtu,
+						multiplexing: node.multiplexing, handshake_mode: node.handshake_mode
+					});
+					var fail = function(msg) { out.textContent = '失败：' + msg; out.style.color = '#d9534f'; };
+					return exec([ 'delay', '--json', js ]).then(function(res) {
 						var r = JSON.parse(res);
-						out.textContent = r.error ? '失败' : (r.ms + ' ms');
-						out.title = r.error || '';
-					}).catch(function(e) { out.textContent = '失败'; out.title = e.message; });
+						if (r.error) fail(r.error);
+						else out.textContent = r.ms + ' ms';
+					}).catch(function(e) { fail(e.message); });
 				})
 			}, '测速');
 			var box = td.lastElementChild || td;

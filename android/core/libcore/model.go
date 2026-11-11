@@ -22,7 +22,7 @@ type Profile struct {
 
 // Rule is a user routing rule.
 type Rule struct {
-	Type    string `json:"type"`   // DOMAIN-SUFFIX, DOMAIN, DOMAIN-KEYWORD, GEOSITE, GEOIP, IP-CIDR, IP-CIDR6, DST-PORT
+	Type    string `json:"type"` // DOMAIN-SUFFIX, DOMAIN, DOMAIN-KEYWORD, GEOSITE, GEOIP, IP-CIDR, IP-CIDR6, DST-PORT
 	Value   string `json:"value"`
 	Action  string `json:"action"` // PROXY | DIRECT | REJECT
 	Enabled bool   `json:"enabled"`

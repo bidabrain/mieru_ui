@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# End-to-end test (CI): install the x86_64 packages into an ImmortalWrt 23.05 container,
-# put a fake LAN client behind it and check its traffic is transparently proxied to a
-# mieru test server. Run after `bash wrt/build.sh` (needs Docker, Go, sudo).
+# End-to-end test (CI): install the x86_64 packages into an ImmortalWrt container
+# (PM=opkg: 23.05 with the .ipk files, PM=apk: 25.12 with the .apk files), put a fake LAN
+# client behind it and check its traffic is transparently proxied to a mieru test server.
+# Run after building the packages (needs Docker, Go, sudo).
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
-IMG="${IMG:-immortalwrt/rootfs:x86_64-openwrt-23.05}"
-LOG=build/e2e
+PM="${PM:-opkg}"
+if [ "$PM" = apk ]; then
+  IMG="${IMG:-immortalwrt/rootfs:x86_64-openwrt-25.12}"; EXT=apk; FEEDS=/etc/apk/repositories.d/distfeeds.list
+else
+  IMG="${IMG:-immortalwrt/rootfs:x86_64-openwrt-23.05}"; EXT=ipk; FEEDS=/etc/opkg/distfeeds.conf
+fi
+LOG=build/e2e-$PM
 mkdir -p "$LOG"
 
 note() { echo "::notice title=$1::$(printf '%s' "$2" | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')"; }
@@ -24,12 +30,12 @@ dump() {
     echo "== testsrv"; tail -10 "$LOG/testsrv.log"
   } > "$LOG/dump.txt" 2>&1
   cat "$LOG/dump.txt"
-  note "e2e diagnostics ($STEP)" "$(head -c 3500 "$LOG/dump.txt")"
+  note "e2e $PM diagnostics ($STEP)" "$(head -c 3500 "$LOG/dump.txt")"
 }
 
 on_exit() {
   rc=$?
-  if [ $rc -ne 0 ]; then echo "::error title=e2e failed::step: $STEP (exit $rc)"; dump; fi
+  if [ $rc -ne 0 ]; then echo "::error title=e2e $PM failed::step: $STEP (exit $rc)"; dump; fi
   kill %1 2>/dev/null || true
   docker rm -f wrt >/dev/null 2>&1 || true
   exit $rc
@@ -84,14 +90,22 @@ x "wget -q -T 10 -O /dev/null http://$GW:8080/releases/ && echo mirror reachable
 step "install packages"
 # The rootfs image has no TLS-capable wget and the container's own DNS/egress is not
 # reliable on CI: fetch the feeds through the test server's HTTP mirror on the host.
-x "sed -i -E 's#https?://[^ ]+/(releases|snapshots)/#http://$GW:8080/\1/#' /etc/opkg/distfeeds.conf; cat /etc/opkg/distfeeds.conf"
-x 'opkg update' > "$LOG/opkg-update.txt" 2>&1 || { cat "$LOG/opkg-update.txt"; false; }
-if ! x 'opkg install /pkgs/mieru-wrt_*_x86_64.ipk /pkgs/luci-app-mieru_*_all.ipk' > "$LOG/opkg.txt" 2>&1; then
-  cat "$LOG/opkg.txt"
-  note "opkg dependencies" "$(cat "$LOG/opkg.txt")"
-  # Container rootfs images lack the kernel package kmods depend on; the real router has it.
-  x 'opkg install --force-depends /pkgs/mieru-wrt_*_x86_64.ipk /pkgs/luci-app-mieru_*_all.ipk'
+x "sed -i -E 's#https?://[^ ]+/(releases|snapshots)/#http://$GW:8080/\1/#' $FEEDS; cat $FEEDS"
+PKGS="/pkgs/mieru-wrt_*_x86_64.$EXT /pkgs/luci-app-mieru_*_all.$EXT"
+if [ "$PM" = apk ]; then
+  x 'apk update' > "$LOG/pkg-update.txt" 2>&1 || { cat "$LOG/pkg-update.txt"; false; }
+  # Our packages are not signed with the distribution key.
+  x "apk add --allow-untrusted $PKGS" > "$LOG/pkg.txt" 2>&1 || { cat "$LOG/pkg.txt"; false; }
+else
+  x 'opkg update' > "$LOG/pkg-update.txt" 2>&1 || { cat "$LOG/pkg-update.txt"; false; }
+  if ! x "opkg install $PKGS" > "$LOG/pkg.txt" 2>&1; then
+    cat "$LOG/pkg.txt"
+    note "opkg dependencies" "$(cat "$LOG/pkg.txt")"
+    # Container rootfs images lack the kernel package kmods depend on; the real router has it.
+    x "opkg install --force-depends $PKGS"
+  fi
 fi
+cat "$LOG/pkg.txt"
 x 'mieru-wrt version'
 x 'test -f /www/luci-static/resources/view/mieru/settings.js && test -f /usr/share/rpcd/acl.d/luci-app-mieru.json'
 x '/etc/init.d/mieru enabled'
@@ -147,20 +161,26 @@ sleep 1
 grep -q 'CONNECT example.com:80' "$LOG/testsrv.log"
 
 step "LuCI pages in headless Chrome"
-x 'opkg install luci luci-theme-bootstrap' > "$LOG/opkg-luci.txt" 2>&1 || { cat "$LOG/opkg-luci.txt"; false; }
+if [ "$PM" = apk ]; then INSTALL="apk add"; else INSTALL="opkg install"; fi
+x "$INSTALL luci luci-theme-bootstrap" > "$LOG/pkg-luci.txt" 2>&1 || { cat "$LOG/pkg-luci.txt"; false; }
 x 'uci set luci.main.mediaurlbase=/luci-static/bootstrap; uci commit luci; /etc/init.d/uhttpd restart; /etc/init.d/rpcd restart'
 # eth0 (the Docker side) is in no firewall zone, so fw4 rejects input on it: open HTTP
 # for the test browser.
 x 'nft insert rule inet fw4 input iifname eth0 tcp dport 80 accept; pgrep -a uhttpd'
 sleep 3
 ROUTER=${CIP%/*}
-node test/luci.mjs "http://$ROUTER" "mierus://bob:pw@${GW}?profile=imported&port=2013&protocol=TCP" > "$LOG/luci.txt" 2>&1 || { cat "$LOG/luci.txt"; note "LuCI test output" "$(tail -c 2500 "$LOG/luci.txt")"; false; }
+node test/luci.mjs "http://$ROUTER" "mierus://bob:pw@${GW}?profile=imported&port=2013&protocol=TCP" > "$LOG/luci.txt" 2>&1 || { cat "$LOG/luci.txt"; note "LuCI test output ($PM)" "$(tail -c 2500 "$LOG/luci.txt")"; false; }
 cat "$LOG/luci.txt"
 
 step "reload keeps working"
 x 'uci set mieru.main.mode=gfw; uci commit mieru; /etc/init.d/mieru reload'
 sleep 4
 x 'nft list table inet mieru >/dev/null'
+
+step "update rule data (gfw mode uses GeoSite + GeoIP)"
+x "uci set mieru.main.geox_source=github; uci commit mieru; ls -l /etc/mieru/*.dat; mieru-wrt update-geo; ls -l /etc/mieru/*.dat" > "$LOG/geo.txt" 2>&1 || { cat "$LOG/geo.txt"; false; }
+cat "$LOG/geo.txt"
+grep -q "规则数据已更新" "$LOG/geo.txt"
 
 step "stop removes everything"
 x '/etc/init.d/mieru stop'
@@ -169,7 +189,8 @@ if x 'nft list table inet mieru' >/dev/null 2>&1; then echo "table still present
 if x 'ip rule | grep -q "lookup 162"'; then echo "ip rule still present"; false; fi
 if x 'ls /tmp/dnsmasq*.d/mieru.conf' >/dev/null 2>&1; then echo "dnsmasq conf still present"; false; fi
 
-note "e2e passed" "delay: $(cat "$LOG/delay.json")
+note "e2e $PM passed" "$(x "grep PRETTY /etc/os-release")
+delay: $(cat "$LOG/delay.json")
 dns: $(grep -A2 'Name:' "$LOG/dns.txt" | tr '\n' ' ')
 testsrv: $(grep CONNECT "$LOG/testsrv.log" | tail -5)"
 echo "E2E OK"

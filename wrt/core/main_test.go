@@ -180,3 +180,22 @@ func TestNameAnonymous(t *testing.T) {
 		t.Fatal("mismatched show output must not rename")
 	}
 }
+
+func TestNodeFromJSON(t *testing.T) {
+	n, err := nodeFromJSON(`{".name":"cfg01","name":"jp","server":"203.0.113.7","username":"u","password":"p","port":["2012/TCP","3000-3010/UDP"],"mtu":"1400","multiplexing":"MULTIPLEXING_LOW"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := nodeProfile(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Name != "cfg01" || p.Name != "jp" || p.MTU != 1400 || len(p.Bindings) != 2 || p.Multiplexing != "MULTIPLEXING_LOW" {
+		t.Errorf("got %+v / %+v", n, p)
+	}
+	// LuCI gives a single-element list as a plain string.
+	n, _ = nodeFromJSON(`{"server":"s","username":"u","password":"p","port":"2012/TCP"}`)
+	if p, err := nodeProfile(n); err != nil || len(p.Bindings) != 1 {
+		t.Errorf("single port: %+v %v", p, err)
+	}
+}

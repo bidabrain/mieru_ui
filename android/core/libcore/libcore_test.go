@@ -2,6 +2,7 @@ package libcore
 
 import (
 	"encoding/json"
+	"github.com/metacubex/mihomo/component/geodata"
 	"os"
 	"strings"
 	"testing"
@@ -228,5 +229,26 @@ func TestRouterConfig(t *testing.T) {
 		if _, err := buildConfig(o); err == nil {
 			t.Errorf("expected error for %+v", bad)
 		}
+	}
+}
+
+// UpdateGeoFor runs in its own process on OpenWrt, so it must register the geo mode
+// and URLs itself (regression: "can't download MMDB database file: Get \"\"").
+func TestUpdateGeoForRegistersURLs(t *testing.T) {
+	if err := setup(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	geodata.SetGeodataMode(false)
+	geodata.SetGeoIpUrl("")
+	o := testOptions("global")
+	o.Router = &Router{TProxyPort: 7893, DNSPort: 7874}
+	o.GeoxSource = "github"
+	js, _ := json.Marshal(o)
+	_ = UpdateGeoFor(string(js)) // the download itself may fail offline
+	if !geodata.GeodataMode() {
+		t.Error("geodata mode not set")
+	}
+	if geodata.GeoIpUrl() != geoxSources["github"]["geoip"] || geodata.GeoSiteUrl() != geoxSources["github"]["geosite"] {
+		t.Errorf("urls not set: %q %q", geodata.GeoIpUrl(), geodata.GeoSiteUrl())
 	}
 }
