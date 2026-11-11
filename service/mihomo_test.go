@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -183,5 +184,33 @@ func TestBuildMihomoNoDNS(t *testing.T) {
 	}
 	if strings.Contains(out, "\ndns:") || strings.Contains(out, "geox-url") || strings.Contains(out, autoGroupName) {
 		t.Errorf("unexpected sections:\n%s", out)
+	}
+}
+
+// Regression: with 10+ emoji scalars, placeholder X1 used to be a prefix of X10/X11 and
+// (random map order) could corrupt them into e.g. `- "🔯 故障转移"0` — invalid YAML.
+func TestEncodeYAMLManyEmojiScalars(t *testing.T) {
+	var in struct {
+		Items []string `yaml:"items"`
+	}
+	for i := 0; i < 25; i++ {
+		in.Items = append(in.Items, fmt.Sprintf("🚀 item %d", i))
+	}
+	for run := 0; run < 50; run++ { // map iteration order is random; repeat to hit bad orders
+		out, err := encodeYAML(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var back struct {
+			Items []string `yaml:"items"`
+		}
+		if err := yaml.Unmarshal([]byte(out), &back); err != nil {
+			t.Fatalf("invalid YAML: %v\n%s", err, out)
+		}
+		for i, v := range in.Items {
+			if back.Items[i] != v {
+				t.Fatalf("item %d: got %q want %q", i, back.Items[i], v)
+			}
+		}
 	}
 }

@@ -471,7 +471,9 @@ func encodeYAML(v any) (string, error) {
 			je := json.NewEncoder(&q)
 			je.SetEscapeHTML(false)
 			_ = je.Encode(n.Value)
-			token := fmt.Sprintf("MIERUUI%sX%d", nonce, len(repl))
+			// The trailing "Z" terminates the index: without it token X1 is a prefix of
+			// X10, X11…, and (map order being random) could clobber them on replace.
+			token := fmt.Sprintf("MIERUUI%sX%dZ", nonce, len(repl))
 			repl[token] = strings.TrimRight(q.String(), "\n")
 			n.Value, n.Style = token, 0
 		}
