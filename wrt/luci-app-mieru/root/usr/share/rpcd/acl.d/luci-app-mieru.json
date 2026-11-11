@@ -1,0 +1,25 @@
+{
+	"luci-app-mieru": {
+		"description": "Grant access to Mieru configuration",
+		"read": {
+			"file": {
+				"/usr/bin/mieru-wrt": [ "exec" ],
+				"/usr/bin/mieru-wrt *": [ "exec" ],
+				"/sbin/logread": [ "exec" ],
+				"/sbin/logread *": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ],
+				"service": [ "list" ]
+			},
+			"uci": [ "mieru" ]
+		},
+		"write": {
+			"file": {
+				"/etc/init.d/mieru restart": [ "exec" ],
+				"/etc/init.d/mieru stop": [ "exec" ]
+			},
+			"uci": [ "mieru" ]
+		}
+	}
+}

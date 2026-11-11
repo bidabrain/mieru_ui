@@ -63,7 +63,11 @@ func start(o Options) error {
 		return fmt.Errorf("配置解析失败: %w", err)
 	}
 	executor.ApplyConfig(cfg, true)
-	if !listener.GetTunConf().Enable {
+	if o.Router != nil {
+		if listener.GetPorts().TProxyPort != o.Router.TProxyPort {
+			return fmt.Errorf("TPROXY 端口 %d 监听失败（可能被占用），请查看日志", o.Router.TProxyPort)
+		}
+	} else if !listener.GetTunConf().Enable {
 		executor.Shutdown()
 		return errors.New("TUN 启动失败，请查看日志")
 	}

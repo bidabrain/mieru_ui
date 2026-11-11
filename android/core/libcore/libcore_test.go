@@ -197,3 +197,36 @@ func TestPublicAPI(t *testing.T) {
 		t.Fatal("start with fd 0 should fail")
 	}
 }
+
+func TestRouterConfig(t *testing.T) {
+	if err := setup(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	o := testOptions("global")
+	o.Router = &Router{TProxyPort: 7893, DNSPort: 7874, RoutingMark: 255}
+	o.MixedPort = 7890
+	buf, err := buildConfig(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := executor.ParseWithBytes(buf)
+	if err != nil {
+		t.Fatalf("mihomo rejected router config: %v\n%s", err, buf)
+	}
+	g := cfg.General
+	if g.Tun.Enable {
+		t.Error("router mode must not enable tun")
+	}
+	if g.TProxyPort != 7893 || g.RoutingMark != 255 || !g.AllowLan || g.MixedPort != 7890 {
+		t.Errorf("router inbound wrong: tproxy=%d mark=%d allowLan=%v mixed=%d", g.TProxyPort, g.RoutingMark, g.AllowLan, g.MixedPort)
+	}
+	if cfg.DNS.Listen != "127.0.0.1:7874" {
+		t.Errorf("dns listen %q", cfg.DNS.Listen)
+	}
+	for _, bad := range []Router{{TProxyPort: 0, DNSPort: 7874}, {TProxyPort: 7893, DNSPort: 7893}, {TProxyPort: 7893, DNSPort: 70000}} {
+		o.Router = &bad
+		if _, err := buildConfig(o); err == nil {
+			t.Errorf("expected error for %+v", bad)
+		}
+	}
+}

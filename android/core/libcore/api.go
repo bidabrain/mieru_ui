@@ -9,6 +9,7 @@ import (
 	"time"
 
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/hub/executor"
 )
 
 // Init must be called once with a private writable directory.
@@ -148,3 +149,33 @@ func ClearLogs() { clearLogs() }
 
 // UpdateGeo downloads fresh geoip/geosite databases.
 func UpdateGeo() error { return updateGeo() }
+
+// StartRouter launches the core in OpenWrt transparent-proxy mode (options.router must be
+// set). Used by the mieru-wrt router binary; the process exits to stop it.
+func StartRouter(optionsJSON string) error {
+	var o Options
+	if err := json.Unmarshal([]byte(optionsJSON), &o); err != nil {
+		return err
+	}
+	if o.Router == nil {
+		return fmt.Errorf("options.router is required")
+	}
+	return start(o)
+}
+
+// UpdateGeoFor downloads fresh GeoIP/GeoSite data using the geox URLs of the given
+// options (parsing the config is what registers those URLs with mihomo).
+func UpdateGeoFor(optionsJSON string) error {
+	var o Options
+	if err := json.Unmarshal([]byte(optionsJSON), &o); err != nil {
+		return err
+	}
+	b, err := buildConfig(o)
+	if err != nil {
+		return err
+	}
+	if _, err := executor.ParseWithBytes(b); err != nil {
+		return err
+	}
+	return updateGeo()
+}

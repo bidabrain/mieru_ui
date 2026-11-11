@@ -1,0 +1,6 @@
+#!/bin/sh
+[ -n "$IPKG_INSTROOT" ] && exit 0
+/etc/init.d/mieru enable
+# (Re)start only does something when mieru.main.enabled=1.
+/etc/init.d/mieru restart >/dev/null 2>&1
+exit 0

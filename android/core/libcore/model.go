@@ -51,6 +51,15 @@ type Options struct {
 	GeoxSource string  `json:"geoxSource"` // jsdelivr | github
 	MixedPort  int     `json:"mixedPort"`  // local HTTP/SOCKS port on 127.0.0.1, 0 = off
 	TunFd      int     `json:"-"`
+	// Router switches from Android tun mode to OpenWrt transparent-proxy (TPROXY) mode.
+	Router *Router `json:"router,omitempty"`
+}
+
+// Router holds the inbound settings for running on an OpenWrt router.
+type Router struct {
+	TProxyPort  int `json:"tproxyPort"`  // TPROXY listener for forwarded LAN traffic
+	DNSPort     int `json:"dnsPort"`     // DNS listener on 127.0.0.1 (dnsmasq forwards to it)
+	RoutingMark int `json:"routingMark"` // fwmark on the core's own sockets, 0 = none
 }
 
 // ProxyGroup is the name of the proxy group rules point at.

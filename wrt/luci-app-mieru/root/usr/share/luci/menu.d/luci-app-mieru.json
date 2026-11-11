@@ -1,0 +1,38 @@
+{
+	"admin/services/mieru": {
+		"title": "Mieru",
+		"order": 60,
+		"action": {
+			"type": "alias",
+			"path": "admin/services/mieru/settings"
+		},
+		"depends": {
+			"acl": [ "luci-app-mieru" ],
+			"uci": { "mieru": true }
+		}
+	},
+	"admin/services/mieru/settings": {
+		"title": "基本设置",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "mieru/settings"
+		}
+	},
+	"admin/services/mieru/nodes": {
+		"title": "节点",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "mieru/nodes"
+		}
+	},
+	"admin/services/mieru/log": {
+		"title": "日志",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "mieru/log"
+		}
+	}
+}

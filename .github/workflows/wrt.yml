@@ -1,0 +1,71 @@
+name: wrt
+
+on:
+  push:
+    tags: ["wrt-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: wrt/core/go.mod
+          cache-dependency-path: wrt/core/go.sum
+
+      - name: Version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF_NAME" == wrt-v* ]]; then V="${GITHUB_REF_NAME#wrt-v}"; else V="0.0.0"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
+        run: |
+          (cd wrt/core && go vet ./... && go test ./...)
+          (cd android/core && go test -tags cmfa,with_gvisor ./...)
+
+      - name: Check LuCI views parse
+        run: |
+          for f in wrt/luci-app-mieru/root/www/luci-static/resources/view/mieru/*.js; do
+            node -e 'new Function(require("fs").readFileSync(process.argv[1], "utf8"))' "$f"
+          done
+          for f in $(find wrt -name '*.json' -path '*root*'); do jq empty "$f"; done
+          sh -n wrt/mieru-wrt/root/etc/init.d/mieru
+
+      - name: Build packages
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash wrt/build.sh
+
+      - name: Install headless browser driver
+        run: npm install --no-save --no-package-lock --prefix wrt/test puppeteer-core@23.11.1
+
+      - name: End-to-end test in ImmortalWrt 23.05
+        run: bash wrt/test/e2e.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mieru-wrt-${{ steps.ver.outputs.version }}
+          path: wrt/dist/*
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/wrt-v')
+        with:
+          name: Mieru OpenWrt ${{ steps.ver.outputs.version }}
+          # Keep "latest" pointing at the panel release: install.sh resolves releases/latest.
+          make_latest: false
+          files: |
+            wrt/dist/*.ipk
+            wrt/dist/SHA256SUMS-wrt
+          body: |
+            Mieru OpenWrt 插件 ${{ steps.ver.outputs.version }}（ImmortalWrt / OpenWrt 23.05+，opkg）
+
+            - 需要安装两个包：`mieru-wrt_*_<架构>.ipk`（核心服务）和 `luci-app-mieru_*_all.ipk`（界面）。
+            - 架构用 `opkg print-architecture` 查看，例如 NanoPi R5S 是 `aarch64_generic`。
+            - 安装后在 LuCI「服务 → Mieru」中导入 mierus:// 链接并启用。

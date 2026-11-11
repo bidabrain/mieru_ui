@@ -1,0 +1,174 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+const nftTable = "mieru"
+
+// Destinations that are never proxied (LAN, loopback, link-local, multicast, reserved).
+var bypass4 = []string{
+	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+	"172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4",
+}
+
+// nftRuleset renders the transparent-proxy rules: forwarded IPv4 TCP/UDP from the LAN
+// interfaces is TPROXY'd to the core; with DNS hijack, LAN port-53 traffic goes to the
+// router's dnsmasq (which forwards to the core).
+func nftRuleset(s *settings) string {
+	var b strings.Builder
+	quoted := make([]string, len(s.LanIfnames))
+	for i, n := range s.LanIfnames {
+		quoted[i] = `"` + n + `"`
+	}
+	lan := "{ " + strings.Join(quoted, ", ") + " }"
+	fmt.Fprintf(&b, "table inet %s {\n", nftTable)
+	fmt.Fprintf(&b, "\tset bypass4 {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t\tauto-merge\n\t\telements = { %s }\n\t}\n", strings.Join(bypass4, ", "))
+	if len(s.AccessIPs) > 0 {
+		ips := make([]string, len(s.AccessIPs))
+		for i, p := range s.AccessIPs {
+			ips[i] = p.String()
+		}
+		fmt.Fprintf(&b, "\tset access4 {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t\tauto-merge\n\t\telements = { %s }\n\t}\n", strings.Join(ips, ", "))
+	}
+
+	b.WriteString("\tchain prerouting {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n")
+	fmt.Fprintf(&b, "\t\tiifname != %s return\n", lan)
+	b.WriteString("\t\tmeta nfproto != ipv4 return\n")
+	b.WriteString("\t\tmeta l4proto != { tcp, udp } return\n")
+	b.WriteString("\t\tfib daddr type local return\n")
+	b.WriteString("\t\tip daddr @bypass4 return\n")
+	switch s.AccessMode {
+	case "include":
+		b.WriteString("\t\tip saddr != @access4 return\n")
+	case "exclude":
+		if len(s.AccessIPs) > 0 {
+			b.WriteString("\t\tip saddr @access4 return\n")
+		}
+	}
+	if s.DNSHijack {
+		b.WriteString("\t\tmeta l4proto { tcp, udp } th dport 53 return\n")
+	}
+	// nft checks protocol context per rule, so tproxy needs its own l3/l4 matches here.
+	fmt.Fprintf(&b, "\t\tmeta nfproto ipv4 meta l4proto { tcp, udp } meta mark set 0x%x tproxy ip to 127.0.0.1:%d accept\n", s.Fwmark, s.Core.Router.TProxyPort)
+	b.WriteString("\t}\n")
+
+	if s.DNSHijack {
+		b.WriteString("\tchain dns_hijack {\n\t\ttype nat hook prerouting priority dstnat - 5; policy accept;\n")
+		fmt.Fprintf(&b, "\t\tiifname %s meta nfproto ipv4 meta l4proto { tcp, udp } th dport 53 fib daddr type != local redirect to :53\n", lan)
+		b.WriteString("\t}\n")
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+func run(name string, args ...string) error {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s %s: %v: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func applyNetfilter(s *settings) error {
+	removeNetfilter(s)
+	f, err := os.CreateTemp("", "mieru-*.nft")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(nftRuleset(s)); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+	if err := run("nft", "-f", f.Name()); err != nil {
+		return err
+	}
+	mark, table := fmt.Sprintf("0x%x", s.Fwmark), fmt.Sprint(s.Table)
+	if err := run("ip", "-4", "rule", "add", "fwmark", mark, "lookup", table, "pref", "9162"); err != nil {
+		return err
+	}
+	return run("ip", "-4", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", table)
+}
+
+// removeNetfilter undoes applyNetfilter; safe to call when nothing is installed.
+func removeNetfilter(s *settings) {
+	_ = exec.Command("nft", "delete", "table", "inet", nftTable).Run()
+	table := "162"
+	if s != nil {
+		table = fmt.Sprint(s.Table)
+	}
+	for i := 0; i < 8; i++ { // drop every copy of our rule (by preference)
+		if exec.Command("ip", "-4", "rule", "del", "pref", "9162").Run() != nil {
+			break
+		}
+	}
+	_ = exec.Command("ip", "-4", "route", "flush", "table", table).Run()
+}
+
+const dnsmasqFile = "mieru.conf"
+
+var confDirRe = regexp.MustCompile(`(?m)^conf-dir=([^,\s]+)`)
+
+// dnsmasqDirs finds the conf-dir of every running dnsmasq instance.
+func dnsmasqDirs() []string {
+	seen := map[string]bool{}
+	var dirs []string
+	files, _ := filepath.Glob("/var/etc/dnsmasq.conf*")
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, m := range confDirRe.FindAllStringSubmatch(string(b), -1) {
+			if !seen[m[1]] {
+				seen[m[1]] = true
+				dirs = append(dirs, m[1])
+			}
+		}
+	}
+	if len(dirs) == 0 {
+		dirs = []string{"/tmp/dnsmasq.d"}
+	}
+	return dirs
+}
+
+func restartDnsmasq() {
+	if err := run("/etc/init.d/dnsmasq", "restart"); err != nil {
+		log.Printf("restart dnsmasq: %v", err)
+	}
+}
+
+// applyDnsmasq makes dnsmasq forward every query to the core's DNS listener.
+func applyDnsmasq(s *settings) error {
+	conf := fmt.Sprintf("# generated by mieru-wrt, removed when the service stops\nno-resolv\nserver=127.0.0.1#%d\n", s.Core.Router.DNSPort)
+	for _, d := range dnsmasqDirs() {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(d, dnsmasqFile), []byte(conf), 0o644); err != nil {
+			return err
+		}
+	}
+	restartDnsmasq()
+	return nil
+}
+
+func removeDnsmasq() {
+	changed := false
+	for _, d := range dnsmasqDirs() {
+		if os.Remove(filepath.Join(d, dnsmasqFile)) == nil {
+			changed = true
+		}
+	}
+	if changed {
+		restartDnsmasq()
+	}
+}

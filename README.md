@@ -18,6 +18,7 @@
 - [面板功能说明](#面板功能说明)
 - [客户端连接](#客户端连接)
 - [Android 客户端](#android-客户端)
+- [OpenWrt 插件](#openwrt-插件)
 - [命令行](#命令行)
 - [卸载](#卸载)
 - [安全建议](#安全建议)
@@ -265,6 +266,63 @@ Android 部分链接了 mihomo（GPL-3.0），因此 `android/` 目录以 GPL-3.
 
 ---
 
+## OpenWrt 插件
+
+`wrt/` 目录是给 OpenWrt / ImmortalWrt 路由器用的 mieru 插件，装好后在 LuCI「服务 → Mieru」中管理，让整个局域网透明代理。内核和 Android 客户端是同一套（mihomo + mieru 官方库），分流规则也相同。
+
+- **只需要 `mierus://` 分享链接**：在「节点」页粘贴即可导入，可导入多个节点并在「基本设置」中切换；每个节点可单独测速
+- **分流**：绕过大陆 / GFW 列表 / 全局 / 直连；拦截广告、Apple/微软国内直连、流量嗅探；自定义规则（`类型,内容,动作`）
+- **DNS**：dnsmasq 把查询转发给内核（国内 DNS 直连、国外 DNS 经代理，默认 Fake-IP）；可劫持局域网设备自设的 DNS
+- **访问控制**：只代理 / 不代理指定设备（按 IP 或网段）；可指定局域网接口（默认 `br-lan`）
+- **透明代理**：nftables TPROXY + 策略路由，只处理从局域网接口转发的 IPv4 TCP/UDP，局域网和保留地址不经过代理；服务停止（包括崩溃后由 procd 停止）时会自动删除规则并恢复 dnsmasq
+- 可选 HTTP/SOCKS5 端口供局域网设备手动设置代理；运行日志页
+
+要求：使用 opkg 的 OpenWrt / ImmortalWrt 23.05 或 24.10（fw4 / nftables）。依赖 `kmod-nft-tproxy`、`ip-full`、`ca-bundle`，安装时会自动从软件源下载。
+
+支持的平台（`opkg print-architecture` 显示的架构）：
+
+| 平台 | 架构 |
+|---|---|
+| x86/64 软路由、虚拟机 | `x86_64`（32 位旧机器：`i386_pentium4`） |
+| ARM64：RK3568/RK3588（NanoPi R5S/R6S 等）、树莓派 3/4/5、MT7981/MT7986、IPQ807x 等 | `aarch64_generic`、`aarch64_cortex-a53`、`aarch64_cortex-a72`、`aarch64_cortex-a76` |
+| ARMv7/v6：IPQ40xx、MT7623、树莓派 1/2 等 | `arm_cortex-a5_vfpv4`、`arm_cortex-a7*`、`arm_cortex-a8_vfpv3`、`arm_cortex-a9*`、`arm_cortex-a15_neon-vfpv4`、`arm_arm1176jzf-s_vfp` |
+| MIPS：MT7621 等 | `mipsel_24kc`、`mips_24kc` |
+| RISC-V 64 | `riscv64_riscv64` |
+
+> 内核程序约 50 MB（压缩后的 ipk 约 20 MB），运行时占用约 50–150 MB 内存。建议至少 256 MB 内存和 128 MB 以上可用存储；闪存只有 16/32 MB、内存 128 MB 的 MIPS 老路由器装不下或会内存不足。
+
+### 安装
+
+在路由器上执行（会自动识别架构、下载最新 `wrt-v*` 版本并校验 SHA256）：
+
+```bash
+sh -c "$(wget -qO- https://raw.githubusercontent.com/bidabrain/mieru_ui/main/wrt/install.sh)"
+```
+
+也可以手动安装：在 [Releases](https://github.com/bidabrain/mieru_ui/releases) 中找到 `Mieru OpenWrt x.y.z`，下载 `mieru-wrt_x.y.z-1_<架构>.ipk` 和 `luci-app-mieru_x.y.z-1_all.ipk`（架构用 `opkg print-architecture` 查看，NanoPi R5S 等 RK3568 设备是 `aarch64_generic`），上传到路由器后：
+
+```bash
+opkg update && opkg install /tmp/mieru-wrt_*.ipk /tmp/luci-app-mieru_*.ipk
+```
+
+### 使用
+
+1. 「服务 → Mieru → 节点」：粘贴面板分享页的 `mierus://` 链接，点「导入」，再点右上角「保存并应用」。
+2. 「基本设置」：勾选「启用」，选择节点和分流模式，保存并应用。
+3. 顶部状态显示「运行中」即可；「测试延迟」可检查节点是否可用，出问题时看「日志」页。
+
+命令行：`/etc/init.d/mieru start|stop|restart`，`mieru-wrt check` 检查配置，`mieru-wrt gen` 查看生成的内核配置和 nftables 规则，`mieru-wrt delay` 测速。配置文件是 `/etc/config/mieru`，规则数据在 `/etc/mieru`。
+
+> 如果路由器上还装着 OpenClash、PassWall 等其它透明代理，请先停用它们，避免规则冲突。
+
+### 发布新版本
+
+推送 `wrt-v1.2.3` 形式的 tag，`.github/workflows/wrt.yml` 会运行测试、为各架构打包 ipk，并在 ImmortalWrt 23.05 容器里做端到端测试（安装、模拟局域网设备经透明代理访问网络、停止后规则清理），然后发布 Release（不占用 Latest）。本地打包：`VERSION=1.2.3 bash wrt/build.sh`（需要 Go，不需要 OpenWrt SDK）。
+
+`wrt/` 同样链接了 mihomo，以 GPL-3.0 发布，见 `wrt/LICENSE`。
+
+---
+
 ## 命令行
 
 ```bash
@@ -506,10 +564,13 @@ install.sh           安装 / 升级 / 卸载脚本
 build.sh             交叉编译脚本
 android/core/        Android 内核（Go，gomobile）：链接解析、mihomo 配置生成、启停 TUN
 android/app/         Android App（Kotlin + Jetpack Compose）
+wrt/core/            OpenWrt 服务 mieru-wrt（Go）：读取 UCI、启动内核、nftables / dnsmasq
+wrt/luci-app-mieru/  LuCI 页面
+wrt/build.sh         打包 ipk；wrt/install.sh 路由器一键安装
 ```
 
 ---
 
 ## License
 
-面板：MIT。Android 客户端（`android/`）：GPL-3.0。
+面板：MIT。Android 客户端（`android/`）和 OpenWrt 插件（`wrt/`）：GPL-3.0。

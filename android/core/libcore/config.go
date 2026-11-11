@@ -315,19 +315,6 @@ func buildConfig(o Options) ([]byte, error) {
 		}
 	}
 
-	tun := map[string]any{
-		"enable":                true,
-		"stack":                 stack,
-		"file-descriptor":       o.TunFd,
-		"dns-hijack":            []string{"any:53", "tcp://any:53"},
-		"auto-route":            false,
-		"auto-detect-interface": false,
-		"mtu":                   tunMTU,
-	}
-	if o.IPv6 {
-		tun["inet6-address"] = []string{TunAddress6}
-	}
-
 	cfg := map[string]any{
 		"mode":                "rule",
 		"log-level":           logLevel,
@@ -342,7 +329,6 @@ func buildConfig(o Options) ([]byte, error) {
 		"geo-update-interval": 24,
 		"geox-url":            geox,
 		"profile":             map[string]any{"store-selected": false, "store-fake-ip": false},
-		"tun":                 tun,
 		"dns":                 dns,
 		"proxies":             proxies,
 		"proxy-groups":        []any{group},
@@ -351,9 +337,51 @@ func buildConfig(o Options) ([]byte, error) {
 	if o.MixedPort < 0 || o.MixedPort > 65535 {
 		return nil, fmt.Errorf("本地代理端口无效 %d", o.MixedPort)
 	}
-	if o.MixedPort > 0 {
-		cfg["mixed-port"] = o.MixedPort
-		cfg["bind-address"] = "127.0.0.1"
+	if r := o.Router; r != nil {
+		// OpenWrt: LAN traffic arrives via nftables TPROXY, DNS via dnsmasq. Listeners
+		// must accept LAN sources (allow-lan); the WAN side is closed by the firewall.
+		for _, p := range []struct {
+			v    int
+			name string
+		}{{r.TProxyPort, "TPROXY 端口"}, {r.DNSPort, "DNS 端口"}} {
+			if p.v < 1 || p.v > 65535 {
+				return nil, fmt.Errorf("%s无效 %d", p.name, p.v)
+			}
+		}
+		if r.TProxyPort == r.DNSPort || r.TProxyPort == o.MixedPort || r.DNSPort == o.MixedPort {
+			return nil, errors.New("TPROXY / DNS / 代理端口不能相同")
+		}
+		if r.RoutingMark < 0 {
+			return nil, fmt.Errorf("routing-mark 无效 %d", r.RoutingMark)
+		}
+		cfg["allow-lan"] = true
+		cfg["bind-address"] = "*"
+		cfg["tproxy-port"] = r.TProxyPort
+		if r.RoutingMark > 0 {
+			cfg["routing-mark"] = r.RoutingMark
+		}
+		dns["listen"] = fmt.Sprintf("127.0.0.1:%d", r.DNSPort)
+		if o.MixedPort > 0 {
+			cfg["mixed-port"] = o.MixedPort
+		}
+	} else {
+		tun := map[string]any{
+			"enable":                true,
+			"stack":                 stack,
+			"file-descriptor":       o.TunFd,
+			"dns-hijack":            []string{"any:53", "tcp://any:53"},
+			"auto-route":            false,
+			"auto-detect-interface": false,
+			"mtu":                   tunMTU,
+		}
+		if o.IPv6 {
+			tun["inet6-address"] = []string{TunAddress6}
+		}
+		cfg["tun"] = tun
+		if o.MixedPort > 0 {
+			cfg["mixed-port"] = o.MixedPort
+			cfg["bind-address"] = "127.0.0.1"
+		}
 	}
 	if rt.Sniff {
 		cfg["sniffer"] = map[string]any{
