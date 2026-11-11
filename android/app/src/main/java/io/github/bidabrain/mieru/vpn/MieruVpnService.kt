@@ -148,7 +148,8 @@ class MieruVpnService : VpnService() {
                 val canPost = Build.VERSION.SDK_INT < 33 ||
                     ContextCompat.checkSelfPermission(this@MieruVpnService, Manifest.permission.POST_NOTIFICATIONS) ==
                     PackageManager.PERMISSION_GRANTED
-                if (canPost) {
+                // Re-check after the traffic call: posting after teardown would resurrect a stale notification.
+                if (canPost && isActive && VpnState.status.value == VpnStatus.Running) {
                     runCatching {
                         nm.notify(NOTIFY_ID, notification("已连接 · ${VpnState.profileName}", "↑ ${formatSpeed(t.up)}   ↓ ${formatSpeed(t.down)}"))
                     }

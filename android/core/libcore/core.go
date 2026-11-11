@@ -17,6 +17,7 @@ import (
 	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/listener"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 )
 
@@ -75,13 +76,40 @@ func stopLocked() {
 	if !running {
 		return
 	}
+	running = false
+	// Close the tun first so the system VPN goes away at once. Closing connections
+	// afterwards can be slow: a graceful mieru close waits up to ~1s per session for
+	// its close frame to be sent, so doing it serially before the tun could keep the
+	// VPN up for minutes on a busy link.
+	executor.Shutdown()
+
+	var conns []statistic.Tracker
 	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
-		_ = c.Close()
+		conns = append(conns, c)
 		return true
 	})
-	executor.Shutdown()
-	running = false
-	debug.FreeOSMemory()
+	var outbounds []C.Proxy
+	for _, p := range tunnel.Proxies() {
+		if p.Type() == C.Mieru {
+			outbounds = append(outbounds, p)
+		}
+	}
+	go func() {
+		var wg sync.WaitGroup
+		for _, c := range conns {
+			wg.Add(1)
+			go func(c statistic.Tracker) {
+				defer wg.Done()
+				_ = c.Close()
+			}(c)
+		}
+		wg.Wait()
+		// Stop the mieru clients too; otherwise each restart leaks one per port.
+		for _, p := range outbounds {
+			_ = p.Close()
+		}
+		debug.FreeOSMemory()
+	}()
 }
 
 func stop() {
