@@ -45,7 +45,13 @@ need() {
 rand_str() { tr -dc 'a-zA-Z0-9' </dev/urandom | head -c "$1" || true; }
 
 latest_tag() { # owner/repo
-  curl -fsSL "https://api.github.com/repos/$1/releases/latest" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+  # Read the whole response first: piping into `grep -m1` makes grep exit early, curl then
+  # fails writing the rest (error 23), and pipefail aborts the script.
+  local json
+  json="$(curl -fsSL "https://api.github.com/repos/$1/releases/latest")" || return 1
+  if [[ $json =~ \"tag_name\":[[:space:]]*\"([^\"]+)\" ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+  fi
 }
 
 install_mita() {
