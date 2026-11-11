@@ -165,7 +165,10 @@ step "HTTP from the router itself to a fake-ip address"
 FIP=$(x "nslookup example.org 127.0.0.1" 2>/dev/null | grep -o '198\.18\.[0-9]*\.[0-9]*' | head -n1)
 echo "example.org -> $FIP"
 [ -n "$FIP" ]
-x "wget -T 15 -qO- http://$FIP/" > "$LOG/http-router.txt" || { x 'nft list table inet mieru; ip rule'; false; }
+if ! x "wget -T 15 -O- http://$FIP/" > "$LOG/http-router.txt" 2> "$LOG/http-router.err"; then
+  note "router fake-ip diagnostics" "$(cat "$LOG/http-router.err"; x "ip rule; ip route show table 162; ip route get $FIP mark 0x162; ip -4 addr; sysctl net.ipv4.conf.all.rp_filter net.ipv4.conf.lo.rp_filter net.ipv4.conf.eth0.route_localnet 2>&1; nft list chain inet mieru output; logread -e mieru | tail -15" 2>&1; echo '== testsrv'; tail -8 "$LOG/testsrv.log")"
+  false
+fi
 grep -qi 'example domain' "$LOG/http-router.txt"
 sleep 1
 grep -q 'CONNECT example.org:80' "$LOG/testsrv.log"
