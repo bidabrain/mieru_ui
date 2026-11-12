@@ -3,7 +3,6 @@ name: wrt
 on:
   push:
     tags: ["wrt-v*"]
-    branches: ["wrt-fix"]
   workflow_dispatch:
 
 permissions:
