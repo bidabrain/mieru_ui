@@ -240,7 +240,7 @@ struct SettingsView: View {
         let o = model.options(p)
         Task {
             do {
-                preview = try await background { try CoreClient.call("preview", CoreRequest(options: o)) }
+                preview = try await offMain { try CoreClient.call("preview", CoreRequest(options: o)) }
             } catch {
                 preview = "生成失败：" + error.localizedDescription
             }

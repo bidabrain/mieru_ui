@@ -156,7 +156,7 @@ struct RoutingView: View {
         updatingGeo = true
         Task {
             do {
-                let _: Bool = try await background { try CoreClient.call("updateGeo", CoreRequest(options: o), timeout: 300) }
+                let _: Bool = try await offMain { try CoreClient.call("updateGeo", CoreRequest(options: o), timeout: 300) }
                 model.show("规则数据已更新")
                 model.reloadIfRunning()
             } catch {
@@ -292,7 +292,7 @@ struct RuleEditView: View {
         saving = true
         Task {
             do {
-                var checked: Rule = try await background { try CoreClient.call("checkRule", CoreRequest(rule: draft)) }
+                var checked: Rule = try await offMain { try CoreClient.call("checkRule", CoreRequest(rule: draft)) }
                 checked.id = draft.id
                 checked.enabled = draft.enabled
                 onSave(checked)

@@ -151,7 +151,7 @@ struct AppsView: View {
     private func load() {
         loading = true
         Task {
-            let list = (try? await background { AppScanner.scan() }) ?? []
+            let list = (try? await offMain { AppScanner.scan() }) ?? []
             apps = list
             loading = false
         }

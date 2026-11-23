@@ -46,9 +46,8 @@ jobs:
           if ! bash macos/build.sh > build.log 2>&1; then
             cat build.log
             # surface compiler errors as annotations (readable without downloading logs)
-            grep -E 'error:|Error|FAILED|fatal' build.log | grep -v '^\s*$' | head -40 | while IFS= read -r line; do
-              echo "::error title=build::$(echo "$line" | sed 's/%/%25/g')"
-            done
+            errs=$(grep -E 'error:|FAILED|fatal' build.log | sed 's#^.*/macos/##' | sort -u | head -80)
+            echo "::error title=build errors::$(printf '%s' "$errs" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
             echo "::error title=build tail::$(tail -c 2500 build.log | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
             exit 1
           fi

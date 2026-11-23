@@ -68,7 +68,7 @@ struct LogsView: View {
                     .help("在「控制台」中打开 \(Helper.logFile)")
                 Button {
                     lines = []
-                    Task { _ = try? await background { try CoreClient.call("clearLogs", as: Bool.self) } }
+                    Task { _ = try? await offMain { try CoreClient.call("clearLogs", as: Bool.self) } }
                 } label: { Label("清空", systemImage: "trash") }
             }
         }
@@ -83,7 +83,7 @@ struct LogsView: View {
     private func fetch() async {
         guard model.daemonReachable else { return }
         let after = next
-        guard let batch: LogBatch = try? await background({ try CoreClient.call("logs", CoreRequest(after: after), timeout: 5) }) else { return }
+        guard let batch: LogBatch = try? await offMain({ try CoreClient.call("logs", CoreRequest(after: after), timeout: 5) }) else { return }
         if batch.next < next { lines = [] } // core restarted
         next = batch.next
         if !batch.lines.isEmpty {

@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 /// Runs blocking core calls off the main thread.
-func background<T>(_ work: @escaping () throws -> T) async throws -> T {
+func offMain<T>(_ work: @escaping () throws -> T) async throws -> T {
     try await withCheckedThrowingContinuation { cont in
         DispatchQueue.global(qos: .userInitiated).async {
             do { cont.resume(returning: try work()) } catch { cont.resume(throwing: error) }
@@ -69,12 +69,12 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            let st: CoreStatus = try await background { try CoreClient.call("status", timeout: 3) }
+            let st: CoreStatus = try await offMain { try CoreClient.call("status", timeout: 3) }
             daemonReachable = st.daemon
             coreStatus = st
             if !busy { state = st.running ? .running : .stopped }
             if st.running {
-                traffic = try await background { try CoreClient.call("traffic", timeout: 3) }
+                traffic = try await offMain { try CoreClient.call("traffic", timeout: 3) }
             } else {
                 traffic = Traffic()
             }
@@ -112,7 +112,7 @@ final class AppModel: ObservableObject {
         lastError = nil
         Task {
             do {
-                let _: Bool = try await background { try CoreClient.call("start", CoreRequest(options: opts), timeout: 60) }
+                let _: Bool = try await offMain { try CoreClient.call("start", CoreRequest(options: opts), timeout: 60) }
                 state = .running
             } catch {
                 state = .stopped
@@ -127,7 +127,7 @@ final class AppModel: ObservableObject {
         state = .stopping
         Task {
             do {
-                let _: Bool = try await background { try CoreClient.call("stop", timeout: 30) }
+                let _: Bool = try await offMain { try CoreClient.call("stop", timeout: 30) }
             } catch {
                 lastError = error.localizedDescription
             }
@@ -144,7 +144,7 @@ final class AppModel: ObservableObject {
         state = .starting
         Task {
             do {
-                let _: Bool = try await background { try CoreClient.call("start", CoreRequest(options: opts), timeout: 60) }
+                let _: Bool = try await offMain { try CoreClient.call("start", CoreRequest(options: opts), timeout: 60) }
                 state = .running
             } catch {
                 state = .stopped
@@ -171,7 +171,7 @@ final class AppModel: ObservableObject {
         let url = store.data.settings.testUrl
         Task {
             do {
-                let ms: Int = try await background {
+                let ms: Int = try await offMain {
                     try CoreClient.call("delay", CoreRequest(profile: p, url: url, timeoutMs: 6000), timeout: 20)
                 }
                 delays[p.id] = max(ms, 1)
@@ -187,7 +187,7 @@ final class AppModel: ObservableObject {
     @discardableResult
     func importText(_ text: String) async -> Int {
         do {
-            var ps: [Profile] = try await background { try CoreClient.call("parse", CoreRequest(text: text)) }
+            var ps: [Profile] = try await offMain { try CoreClient.call("parse", CoreRequest(text: text)) }
             for i in ps.indices { ps[i].id = newId() }
             store.addProfiles(ps)
             show("已导入 \(ps.count) 个节点")

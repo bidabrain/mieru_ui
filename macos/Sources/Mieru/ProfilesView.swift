@@ -122,7 +122,7 @@ struct ProfilesView: View {
     private func copyLink(_ p: Profile) {
         Task {
             do {
-                let link: String = try await background { try CoreClient.call("link", CoreRequest(profile: p)) }
+                let link: String = try await offMain { try CoreClient.call("link", CoreRequest(profile: p)) }
                 copyToPasteboard(link)
                 model.show("已复制（链接包含密码）")
             } catch {
@@ -292,7 +292,7 @@ struct ProfileEditView: View {
         let id = draft.id
         Task {
             do {
-                var checked: Profile = try await background { try CoreClient.call("checkProfile", CoreRequest(profile: draft)) }
+                var checked: Profile = try await offMain { try CoreClient.call("checkProfile", CoreRequest(profile: draft)) }
                 checked.id = id
                 store.upsertProfile(checked)
                 if store.data.selected?.id == id { model.reloadIfRunning() }
@@ -352,7 +352,7 @@ struct ShareView: View {
         .task {
             do {
                 let p = profile
-                link = try await background { try CoreClient.call("link", CoreRequest(profile: p)) }
+                link = try await offMain { try CoreClient.call("link", CoreRequest(profile: p)) }
             } catch {
                 self.error = error.localizedDescription
             }
