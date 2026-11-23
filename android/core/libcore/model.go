@@ -53,6 +53,17 @@ type Options struct {
 	TunFd      int     `json:"-"`
 	// Router switches from Android tun mode to OpenWrt transparent-proxy (TPROXY) mode.
 	Router *Router `json:"router,omitempty"`
+	// Desktop switches to desktop (macOS) mode: mihomo creates the tun itself and
+	// installs the routes, instead of receiving a VpnService fd.
+	Desktop *Desktop `json:"desktop,omitempty"`
+}
+
+// Desktop holds the desktop-only settings.
+type Desktop struct {
+	// PerAppMode: off | proxy (only Apps use the proxy) | bypass (Apps go direct).
+	PerAppMode string `json:"perAppMode"`
+	// Apps are application bundle paths, e.g. /Applications/Safari.app.
+	Apps []string `json:"apps"`
 }
 
 // Router holds the inbound settings for running on an OpenWrt router.

@@ -151,6 +151,20 @@ func ClearLogs() { clearLogs() }
 // UpdateGeo downloads fresh geoip/geosite databases.
 func UpdateGeo() error { return updateGeo() }
 
+// StartDesktop launches the core in desktop (macOS) tun mode: mihomo creates the
+// utun device and the routes itself, so the process must run as root.
+func StartDesktop(optionsJSON string) error {
+	var o Options
+	if err := json.Unmarshal([]byte(optionsJSON), &o); err != nil {
+		return err
+	}
+	if o.Desktop == nil {
+		o.Desktop = &Desktop{}
+	}
+	o.Router = nil
+	return start(o)
+}
+
 // StartRouter launches the core in OpenWrt transparent-proxy mode (options.router must be
 // set). Used by the mieru-wrt router binary; the process exits to stop it.
 func StartRouter(optionsJSON string) error {

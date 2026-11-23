@@ -18,6 +18,7 @@
 - [面板功能说明](#面板功能说明)
 - [客户端连接](#客户端连接)
 - [Android 客户端](#android-客户端)
+- [macOS 客户端](#macos-客户端)
 - [OpenWrt 插件](#openwrt-插件)
 - [命令行](#命令行)
 - [卸载](#卸载)
@@ -263,6 +264,41 @@ cd android && ./gradlew assembleRelease
 内核测试：`cd android/core && go test -tags cmfa,with_gvisor ./...`
 
 Android 部分链接了 mihomo（GPL-3.0），因此 `android/` 目录以 GPL-3.0 发布，见 `android/LICENSE`。
+
+---
+
+## macOS 客户端
+
+`macos/` 目录是 Mieru 的 macOS 版（SwiftUI，macOS 13+，Apple 芯片与 Intel 通用），功能与 Android 客户端一致，内核也是同一套（mihomo + mieru 官方库）。
+
+- **常驻菜单栏**：关闭窗口后留在菜单栏，在菜单栏图标里连接 / 断开、切换节点和分流模式、复制终端代理命令；窗口打开时才显示 Dock 图标，可设为开机启动
+- **导入节点**：从剪贴板粘贴 `mierus://` 链接、导入二维码图片或 mieru 客户端 JSON，也可以直接点开 `mierus://` 链接；节点可编辑、二维码分享、测速
+- **分流**：与 Android 相同的四种模式、常用开关、自定义规则（可排序）、直连 / 远程 DNS、Fake-IP、更新 GeoIP / GeoSite
+- **分应用代理**：「仅选中应用走代理」或「选中应用不走代理」，按应用安装路径匹配（包含应用内的辅助进程）
+- **接管方式**：系统虚拟网卡（TUN，mihomo 自动配置路由）。创建虚拟网卡需要 root，所以首次连接前要安装一次「核心服务」（launchd 守护进程 `io.github.bidabrain.mieru.core`，会请求一次管理员密码），之后连接不再需要授权；可在「设置 → 核心服务」中重装或卸载
+- 实时网速与流量、运行日志、查看生成的配置、本地 HTTP/SOCKS5 端口（默认 `127.0.0.1:17890`）、检查 `macos-v*` Release 更新
+
+### 下载安装
+
+在 [Releases](https://github.com/bidabrain/mieru_ui/releases) 中找到 `Mieru macOS x.y.z`，下载 `Mieru-x.y.z.dmg`，把 Mieru 拖进「应用程序」。应用未经 Apple 公证，首次打开请在「应用程序」里右键 Mieru → 打开，或执行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Mieru.app
+```
+
+### 发布新版本
+
+推送 `macos-v1.2.3` 形式的 tag，`.github/workflows/macos.yml` 会在 macOS runner 上测试内核、编译通用二进制（Go 核心 + Swift 界面）、打包 `.dmg` / `.zip`，并发布 Release（不占用 Latest）。
+
+### 本地编译
+
+需要 macOS、Xcode 命令行工具和 Go：
+
+```bash
+VERSION=1.0.0 bash macos/build.sh
+```
+
+产物在 `macos/build/`。内核测试：`cd macos/core && go test -tags with_gvisor ./...`
 
 ---
 

@@ -1,0 +1,96 @@
+name: macos
+
+on:
+  push:
+    tags: ["macos-v*"]
+    branches: [main]
+    paths:
+      - "macos/**"
+      - "android/core/**"
+      - ".github/workflows/macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: macos/core/go.mod
+          cache-dependency-path: |
+            macos/core/go.sum
+            android/core/go.sum
+
+      - name: Version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF_NAME" == macos-v* ]]; then V="${GITHUB_REF_NAME#macos-v}"; else V="0.0.0-dev"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Test core
+        run: |
+          (cd macos/core && go vet -tags with_gvisor ./... && go test -tags with_gvisor ./...)
+          (cd android/core && go test -tags with_gvisor ./...)
+
+      - name: Build app
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUILD_NUM: ${{ github.run_number }}
+        run: |
+          swift --version
+          bash macos/build.sh
+
+      - name: Smoke test
+        run: |
+          APP=macos/build/Mieru.app
+          file "$APP/Contents/MacOS/Mieru" "$APP/Contents/MacOS/mieru-core"
+          lipo -archs "$APP/Contents/MacOS/Mieru" | grep -q x86_64
+          lipo -archs "$APP/Contents/MacOS/Mieru" | grep -q arm64
+          "$APP/Contents/MacOS/mieru-core" version
+          echo '{"text":"mierus://u:p@example.com?port=2012&protocol=TCP&profile=t"}' \
+            | "$APP/Contents/MacOS/mieru-core" call parse | tee /dev/stderr | grep -q '"ok":true'
+          # the daemon serves the API on a unix socket (runs unprivileged here; only start needs root)
+          "$APP/Contents/MacOS/mieru-core" daemon -socket /tmp/mc.sock -data /tmp/mc-data -seed "$APP/Contents/Resources/geo" & DPID=$!
+          for i in $(seq 1 40); do [ -S /tmp/mc.sock ] && break; sleep 0.25; done
+          curl -sf --unix-socket /tmp/mc.sock -X POST http://x/status | tee /dev/stderr | grep -q '"daemon":true'
+          kill $DPID
+          # the GUI starts and stays up
+          "$APP/Contents/MacOS/Mieru" & PID=$!
+          sleep 8
+          kill -0 $PID
+          kill $PID
+
+      - name: Collect
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          mkdir -p dist
+          cp "macos/build/Mieru-$V.dmg" "macos/build/Mieru-$V.zip" dist/
+          (cd dist && shasum -a 256 * > SHA256SUMS-macos && cat SHA256SUMS-macos)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mieru-macos-${{ steps.ver.outputs.version }}
+          path: dist/*
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/macos-v')
+        with:
+          name: Mieru macOS ${{ steps.ver.outputs.version }}
+          # Keep "latest" pointing at the panel release: install.sh resolves releases/latest.
+          make_latest: false
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS-macos
+          body: |
+            Mieru macOS 客户端 ${{ steps.ver.outputs.version }}（Apple 芯片与 Intel 通用，macOS 13+）
+
+            - 下载 `.dmg`，打开后把 Mieru 拖进「应用程序」。
+            - 应用未经 Apple 公证：首次打开请在「应用程序」里右键 Mieru → 打开；或执行 `xattr -dr com.apple.quarantine /Applications/Mieru.app`。
+            - 首次连接时按提示安装「核心服务」（需要一次管理员密码，用于创建虚拟网卡）。
+            - 关闭窗口后 Mieru 留在菜单栏，可在菜单栏图标中连接/断开、切换节点和分流模式。

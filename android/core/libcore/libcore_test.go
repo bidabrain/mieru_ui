@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub/executor"
 )
 
@@ -196,6 +197,63 @@ func TestPublicAPI(t *testing.T) {
 	}
 	if err := Start(string(opts), 0); err == nil {
 		t.Fatal("start with fd 0 should fail")
+	}
+}
+
+func TestDesktopConfig(t *testing.T) {
+	if err := setup(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	apps := []string{"/Applications/Google Chrome.app", "/Applications/Foo (Beta), Inc.app/", "/Applications/微信.app"}
+	for _, mode := range []string{"off", "proxy", "bypass"} {
+		o := testOptions("global")
+		o.TunFd = 0
+		o.MixedPort = 7890
+		o.Desktop = &Desktop{PerAppMode: mode, Apps: apps}
+		buf, err := buildConfig(o)
+		if err != nil {
+			t.Fatalf("%s: %v", mode, err)
+		}
+		cfg, err := executor.ParseWithBytes(buf)
+		if err != nil {
+			t.Fatalf("%s: mihomo rejected config: %v\n%s", mode, err, buf)
+		}
+		tun := cfg.General.Tun
+		if !tun.Enable || !tun.AutoRoute || !tun.AutoDetectInterface || tun.FileDescriptor != 0 {
+			t.Fatalf("%s: tun not in desktop mode: %+v", mode, tun)
+		}
+		match := func(path string) string {
+			md := &C.Metadata{NetWork: C.TCP, Host: "example.com", DstPort: 443, ProcessPath: path, Process: "x"}
+			for _, r := range cfg.Rules {
+				// a SUB-RULE's Match already resolves its sub-rules
+				if ok, adapter := r.Match(md, C.RuleMatchHelper{}); ok {
+					return adapter
+				}
+			}
+			return "none"
+		}
+		chrome := match("/Applications/Google Chrome.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper")
+		odd := match("/Applications/Foo (Beta), Inc.app/Contents/MacOS/foo")
+		wx := match("/Applications/微信.app/Contents/MacOS/WeChat")
+		other := match("/Applications/Safari.app/Contents/MacOS/Safari")
+		lookalike := match("/Applications/Google ChromeXapp/x")
+		var want [5]string
+		switch mode {
+		case "off":
+			want = [5]string{ProxyGroup, ProxyGroup, ProxyGroup, ProxyGroup, ProxyGroup}
+		case "proxy":
+			want = [5]string{ProxyGroup, ProxyGroup, ProxyGroup, "DIRECT", "DIRECT"}
+		case "bypass":
+			want = [5]string{"DIRECT", "DIRECT", "DIRECT", ProxyGroup, ProxyGroup}
+		}
+		if got := [5]string{chrome, odd, wx, other, lookalike}; got != want {
+			t.Errorf("%s: got %v want %v", mode, got, want)
+		}
+	}
+	o := testOptions("global")
+	o.Desktop = &Desktop{PerAppMode: "proxy", Apps: []string{"relative/path"}}
+	if _, err := buildConfig(o); err == nil {
+		t.Error("relative app path should fail")
 	}
 }
 

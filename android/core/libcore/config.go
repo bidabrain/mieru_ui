@@ -236,6 +236,66 @@ func proxyMaps(p Profile) ([]map[string]any, []string) {
 	return proxies, names
 }
 
+// appPathRegex matches any process inside the given app bundles. Characters that are
+// regex syntax, or that mihomo's rule/logic parser treats specially (comma, parentheses),
+// are written as \uXXXX escapes, so the payload never contains them literally.
+func appPathRegex(apps []string) (string, error) {
+	var alts []string
+	for _, a := range apps {
+		a = strings.TrimRight(strings.TrimSpace(a), "/")
+		if !strings.HasPrefix(a, "/") || len(a) < 2 {
+			return "", fmt.Errorf("应用路径无效 %q", a)
+		}
+		var b strings.Builder
+		b.WriteString("^")
+		for _, r := range a + "/" {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '/', r == '_', r == '-', r == ' ':
+				b.WriteRune(r)
+			case r < 0x80:
+				fmt.Fprintf(&b, `\u%04X`, r)
+			case r > 0xFFFF:
+				return "", fmt.Errorf("应用路径无效 %q", a)
+			default:
+				b.WriteRune(r)
+			}
+		}
+		alts = append(alts, b.String())
+	}
+	if len(alts) == 0 {
+		return "", nil
+	}
+	return strings.Join(alts, "|"), nil
+}
+
+// perAppRules applies the desktop per-app mode to the rule list. It returns nil
+// rules when per-app routing is off.
+func perAppRules(d *Desktop, rules []string) (map[string][]string, []string, error) {
+	switch d.PerAppMode {
+	case "", "off":
+		return nil, nil, nil
+	case "proxy", "bypass":
+	default:
+		return nil, nil, fmt.Errorf("未知分应用模式 %q", d.PerAppMode)
+	}
+	re, err := appPathRegex(d.Apps)
+	if err != nil {
+		return nil, nil, err
+	}
+	if re == "" {
+		if d.PerAppMode == "proxy" {
+			// Nothing selected: every app goes direct.
+			return nil, []string{"MATCH,DIRECT"}, nil
+		}
+		return nil, nil, nil
+	}
+	if d.PerAppMode == "bypass" {
+		return nil, append([]string{"PROCESS-PATH-REGEX," + re + ",DIRECT"}, rules...), nil
+	}
+	return map[string][]string{"apps": rules},
+		[]string{"SUB-RULE,(PROCESS-PATH-REGEX," + re + "),apps", "MATCH,DIRECT"}, nil
+}
+
 // buildConfig produces a mihomo config (JSON, which mihomo's YAML parser accepts).
 func buildConfig(o Options) ([]byte, error) {
 	if err := validateProfile(&o.Profile); err != nil {
@@ -373,6 +433,25 @@ func buildConfig(o Options) ([]byte, error) {
 			"auto-route":            false,
 			"auto-detect-interface": false,
 			"mtu":                   tunMTU,
+		}
+		if d := o.Desktop; d != nil {
+			// mihomo opens a utun device and routes all traffic into it; its own
+			// sockets are bound to the physical interface so they skip the tun.
+			delete(tun, "file-descriptor")
+			tun["auto-route"] = true
+			tun["auto-detect-interface"] = true
+			tun["mtu"] = 1500
+			sub, top, err := perAppRules(d, rules)
+			if err != nil {
+				return nil, err
+			}
+			if top != nil {
+				cfg["rules"] = top
+				cfg["find-process-mode"] = "strict"
+				if sub != nil {
+					cfg["sub-rules"] = sub
+				}
+			}
 		}
 		if o.IPv6 {
 			tun["inet6-address"] = []string{TunAddress6}

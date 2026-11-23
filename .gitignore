@@ -3,3 +3,6 @@
 /mieru-ui
 /mieru-ui.exe
 *.tar.gz
+/macos/build/
+/macos/.build/
+/macos/.swiftpm/
