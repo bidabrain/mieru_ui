@@ -46,10 +46,10 @@ OPTS='{"profile":{"name":"t","server":"127.0.0.1","username":"u","password":"p",
 api status
 api start "{\"options\":$OPTS}" | tee /tmp/start.json
 grep -q '"result":true' /tmp/start.json
-api status | grep -q '"running":true'
+api status > /tmp/status.json; grep '"running":true' /tmp/status.json
 ifconfig | grep -B1 -A4 '198.18.0.1' || true
 netstat -rn -f inet | head -30 || true
-networksetup -getdnsservers "$SVC" | grep -qx 198.18.0.2
+networksetup -getdnsservers "$SVC" > /tmp/dns-now; cat /tmp/dns-now; grep -qx 198.18.0.2 /tmp/dns-now
 
 # fake-ip answer from the hijacked DNS, then real traffic through the tun
 dig +short +time=5 +tries=2 www.gstatic.com @198.18.0.2 | tee /tmp/dig.txt
@@ -63,8 +63,8 @@ codes="$codes mixed=$code"
 api traffic | tee /tmp/traffic.json
 grep -q '"downTotal":[1-9]' /tmp/traffic.json
 
-api stop | grep -q '"ok":true'
+api stop > /tmp/stop.json; grep -q '"ok":true' /tmp/stop.json
 sleep 1
-if ifconfig | grep -q 'inet 198.18.0.1'; then echo "tun still up"; exit 1; fi
-networksetup -getdnsservers "$SVC" | diff - /tmp/dns-before
+if ifconfig | grep 'inet 198.18.0.1' >/dev/null; then echo "tun still up"; exit 1; fi
+networksetup -getdnsservers "$SVC" > /tmp/dns-after; diff /tmp/dns-after /tmp/dns-before
 echo "E2E OK"
