@@ -47,8 +47,8 @@ jobs:
             cat build.log
             # surface compiler errors as annotations (readable without downloading logs)
             errs=$(grep -E 'error:|FAILED|fatal' build.log | sed 's#^.*/macos/##' | sort -u | head -80)
-            echo "::error title=build errors::$(printf '%s' "$errs" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
-            echo "::error title=build tail::$(tail -c 2500 build.log | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            echo "::error title=build errors::$(printf '%s' "$errs" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            echo "::error title=build tail::$(tail -c 2500 build.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             exit 1
           fi
           cat build.log
@@ -77,7 +77,7 @@ jobs:
         run: |
           if ! bash macos/scripts/e2e.sh macos/build/Mieru.app > e2e.log 2>&1; then
             cat e2e.log
-            echo "::error title=e2e::$(tail -c 6000 e2e.log | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+            echo "::error title=e2e::$(tail -c 6000 e2e.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             exit 1
           fi
           cat e2e.log
