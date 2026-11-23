@@ -75,38 +75,13 @@ jobs:
 
       - name: End-to-end test (root daemon, real tun)
         run: |
-          set -x
-          APP=macos/build/Mieru.app
-          SOCK=/tmp/mc-root.sock
-          SVC=$(networksetup -listallnetworkservices | sed 1d | grep -v '^\*' | head -1)
-          networksetup -getdnsservers "$SVC" | tee /tmp/dns-before
-          sudo "$APP/Contents/MacOS/mieru-core" daemon -socket $SOCK -data /tmp/mc-root -owner "$(id -u)" \
-            -seed "$APP/Contents/Resources/geo" > /tmp/core.log 2>&1 &
-          for i in $(seq 1 40); do [ -S $SOCK ] && break; sleep 0.25; done
-          api() { curl -sf --unix-socket $SOCK -X POST "http://x/$1" -d "${2:-{\}}"; echo; }
-          trap 'cat /tmp/core.log; api logs "{\"after\":0}" | head -c 6000' EXIT
-          # direct mode: everything goes through the tun and out directly, so the runner keeps working
-          OPTS='{"profile":{"name":"t","server":"127.0.0.1","username":"u","password":"p","bindings":[{"port":2012,"protocol":"TCP"}]},
-                 "routing":{"mode":"direct","bypassLan":true,"directDns":["https://doh.pub/dns-query","223.5.5.5"],"remoteDns":["https://1.1.1.1/dns-query"],"fakeIp":true,"sniff":true},
-                 "stack":"gvisor","logLevel":"info","mixedPort":17890,"desktop":{"perAppMode":"off","apps":[]}}'
-          api start "{\"options\":$OPTS}" | tee /dev/stderr | grep -q '"result":true'
-          api status | grep -q '"running":true'
-          ifconfig | grep -A3 '^utun' | grep -q 198.18.0.1
-          networksetup -getdnsservers "$SVC" | grep -qx 198.18.0.2
-          # resolves through the hijacked DNS (fake-ip) and connects through the tun
-          dig +short +time=5 www.gstatic.com @198.18.0.2 | tee /dev/stderr | grep -q '^198\.18\.'
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://www.gstatic.com/generate_204)
-          [ "$code" = 204 ]
-          # and through the local mixed port
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -x http://127.0.0.1:17890 https://www.gstatic.com/generate_204)
-          [ "$code" = 204 ]
-          api traffic | tee /dev/stderr | grep -q '"downTotal":[1-9]'
-          api stop | grep -q '"ok":true'
-          sleep 1
-          if ifconfig | grep -A3 '^utun' | grep -q 198.18.0.1; then echo "tun still up"; exit 1; fi
-          networksetup -getdnsservers "$SVC" | diff - /tmp/dns-before
-          sudo pkill -f "mieru-core daemon -socket $SOCK"
-          trap - EXIT
+          if ! bash macos/scripts/e2e.sh macos/build/Mieru.app > e2e.log 2>&1; then
+            cat e2e.log
+            echo "::error title=e2e::$(tail -c 6000 e2e.log | sed ':a;N;$!ba;s/%/%25/g;s/
+/%0A/g')"
+            exit 1
+          fi
+          cat e2e.log
 
       - name: Collect
         run: |
