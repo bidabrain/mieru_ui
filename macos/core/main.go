@@ -160,12 +160,18 @@ func dispatch(method string, body []byte, daemon bool) (any, error) {
 		}
 		err := libcore.StartDesktop(string(q.Options))
 		setLastErr(err)
+		if err == nil && libcore.IsRunning() {
+			hijackSystemDNS()
+		} else {
+			restoreSystemDNS()
+		}
 		return libcore.IsRunning(), err
 	case "stop":
 		if err := needDaemon(); err != nil {
 			return nil, err
 		}
 		libcore.Stop()
+		restoreSystemDNS()
 		return false, nil
 	case "traffic":
 		return raw(libcore.Traffic()), nil
@@ -203,6 +209,8 @@ func cmdDaemon(args []string) error {
 	if err := libcore.Init(*data); err != nil {
 		return err
 	}
+	initDNSBackup(*data)
+	restoreSystemDNS() // left over from a crash
 
 	_ = os.Remove(*socket)
 	ln, err := net.Listen("unix", *socket)
@@ -241,6 +249,7 @@ func cmdDaemon(args []string) error {
 		<-sig
 		log.Print("shutting down")
 		libcore.Stop() // removes the utun routes
+		restoreSystemDNS()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
