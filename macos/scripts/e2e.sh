@@ -2,7 +2,7 @@
 # End-to-end test of the core daemon as root with a real utun (CI: passwordless sudo).
 # Uses direct mode, so the machine keeps its network while the tun is up.
 #   bash macos/scripts/e2e.sh macos/build/Mieru.app
-set -euxo pipefail
+set -Eeuxo pipefail
 
 APP="${1:-macos/build/Mieru.app}"
 CORE="$APP/Contents/MacOS/mieru-core"
@@ -22,14 +22,20 @@ api() {
   echo
 }
 
+FAIL=""
+trap 'FAIL="line $LINENO: $BASH_COMMAND"' ERR
 cleanup() {
   set +e
-  echo "----- core log"
-  cat $LOG
-  echo "----- core buffered log"
-  api logs '{"after":0}' | head -c 8000
+  echo "----- core buffered log (tail)"
+  api logs '{"after":0}' | tail -c 3000
   api stop >/dev/null 2>&1
   sudo pkill -f "mieru-core daemon -socket $SOCK"
+  echo "----- dig: $(cat /tmp/dig.txt 2>/dev/null | tr '
+' ' ')"
+  echo "----- start: $(cat /tmp/start.json 2>/dev/null)"
+  echo "----- traffic: $(cat /tmp/traffic.json 2>/dev/null)"
+  echo "----- curl codes: ${codes:-}"
+  [ -z "$FAIL" ] || echo "FAILED AT $FAIL"
 }
 trap cleanup EXIT
 
@@ -49,8 +55,10 @@ networksetup -getdnsservers "$SVC" | grep -qx 198.18.0.2
 dig +short +time=5 +tries=2 www.gstatic.com @198.18.0.2 | tee /tmp/dig.txt
 grep -q '^198\.18\.' /tmp/dig.txt
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://www.gstatic.com/generate_204 || true)
+codes="tun=$code"
 [ "$code" = 204 ]
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -x http://127.0.0.1:17890 https://www.gstatic.com/generate_204 || true)
+codes="$codes mixed=$code"
 [ "$code" = 204 ]
 api traffic | tee /tmp/traffic.json
 grep -q '"downTotal":[1-9]' /tmp/traffic.json
