@@ -290,6 +290,32 @@ func TestRouterConfig(t *testing.T) {
 	}
 }
 
+func TestMixedPortAllowLan(t *testing.T) {
+	if err := setup(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	for _, lan := range []bool{false, true} {
+		o := testOptions("global")
+		o.MixedPort = 7890
+		o.AllowLan = lan
+		buf, err := buildConfig(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := executor.ParseWithBytes(buf)
+		if err != nil {
+			t.Fatalf("allowLan=%v: mihomo rejected config: %v\n%s", lan, err, buf)
+		}
+		want := "127.0.0.1"
+		if lan {
+			want = "*"
+		}
+		if g := cfg.General; g.AllowLan != lan || g.BindAddress != want || g.MixedPort != 7890 {
+			t.Errorf("allowLan=%v: got allowLan=%v bind=%q mixed=%d", lan, g.AllowLan, g.BindAddress, g.MixedPort)
+		}
+	}
+}
+
 // UpdateGeoFor runs in its own process on OpenWrt, so it must register the geo mode
 // and URLs itself (regression: "can't download MMDB database file: Get \"\"").
 func TestUpdateGeoForRegistersURLs(t *testing.T) {

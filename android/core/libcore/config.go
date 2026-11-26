@@ -460,6 +460,10 @@ func buildConfig(o Options) ([]byte, error) {
 		if o.MixedPort > 0 {
 			cfg["mixed-port"] = o.MixedPort
 			cfg["bind-address"] = "127.0.0.1"
+			if o.AllowLan {
+				cfg["allow-lan"] = true
+				cfg["bind-address"] = "*"
+			}
 		}
 	}
 	if rt.Sniff {

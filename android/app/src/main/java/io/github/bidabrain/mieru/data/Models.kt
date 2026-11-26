@@ -72,6 +72,7 @@ data class Settings(
     val logLevel: String = "info",
     val geoxSource: String = "jsdelivr",
     val mixedPort: Int = 17890,
+    val allowLan: Boolean = false,
     val perAppMode: String = PerAppMode.OFF,
     val perAppList: Set<String> = emptySet(),
     val theme: String = "system", // system | light | dark
@@ -101,6 +102,7 @@ data class CoreOptions(
     val logLevel: String,
     val geoxSource: String,
     val mixedPort: Int,
+    val allowLan: Boolean,
 )
 
 @Serializable

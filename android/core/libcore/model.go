@@ -50,6 +50,7 @@ type Options struct {
 	LogLevel   string  `json:"logLevel"`
 	GeoxSource string  `json:"geoxSource"` // jsdelivr | github
 	MixedPort  int     `json:"mixedPort"`  // local HTTP/SOCKS port on 127.0.0.1, 0 = off
+	AllowLan   bool    `json:"allowLan"`   // tun mode: also accept LAN clients on MixedPort
 	TunFd      int     `json:"-"`
 	// Router switches from Android tun mode to OpenWrt transparent-proxy (TPROXY) mode.
 	Router *Router `json:"router,omitempty"`

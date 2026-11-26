@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
@@ -56,6 +57,8 @@ import io.github.bidabrain.mieru.update.UpdateUi
 import io.github.bidabrain.mieru.update.Updater
 import io.github.bidabrain.mieru.vpn.VpnController
 import kotlinx.coroutines.launch
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 @Composable
 fun SettingsScreen() {
@@ -96,6 +99,21 @@ fun SettingsScreen() {
                     if (s.mixedPort > 0) "127.0.0.1:${s.mixedPort}（HTTP / SOCKS5）" else "已关闭",
                     onClick = { portEdit = true },
                 )
+                if (s.mixedPort > 0) {
+                    SwitchRow(Icons.Rounded.Wifi, "允许局域网连接", "同一网络的其他设备可使用此端口，无需密码", s.allowLan) { v ->
+                        change { it.copy(allowLan = v) }
+                    }
+                    if (s.allowLan) {
+                        // Re-read on every toggle; Wi-Fi / hotspot changes show up the next time the page opens.
+                        val addrs = remember(s.allowLan, s.mixedPort) { lanAddresses().map { "$it:${s.mixedPort}" } }
+                        SettingRow(
+                            null, "局域网地址",
+                            if (addrs.isEmpty()) "未连接局域网（连上 Wi-Fi 或开启热点后重新打开此页）"
+                            else addrs.joinToString("\n") + "\n点击复制，在其他设备填为 HTTP 或 SOCKS5 代理",
+                            onClick = if (addrs.isEmpty()) null else ({ copyText(ctx, addrs.first()); nav.toast("已复制 ${addrs.first()}") }),
+                        )
+                    }
+                }
                 Choice(
                     "规则数据下载源", s.geoxSource,
                     listOf("jsdelivr" to "jsDelivr CDN（国内较快）", "github" to "GitHub Releases"),
@@ -193,7 +211,7 @@ fun SettingsScreen() {
             text = {
                 OutlinedTextField(
                     text, { text = it.filter(Char::isDigit).take(5) }, singleLine = true,
-                    label = { Text("端口") }, supportingText = { Text("仅本机可访问；留空关闭。应用内检查更新也会经由此端口。") },
+                    label = { Text("端口") }, supportingText = { Text((if (s.allowLan) "局域网设备也可访问" else "仅本机可访问") + "；留空关闭。应用内检查更新也会经由此端口。") },
                 )
             },
             confirmButton = {
@@ -231,3 +249,14 @@ fun SettingsScreen() {
     }
 }
 
+/** IPv4 addresses other devices can reach this phone on (Wi-Fi, hotspot, USB/Bluetooth tethering). */
+private fun lanAddresses(): List<String> = runCatching {
+    NetworkInterface.getNetworkInterfaces().toList()
+        // tun = our own VPN; rmnet/ccmni = cellular, whose 10.x CGNAT address isn't reachable from the LAN
+        .filter { it.isUp && !it.isLoopback && listOf("tun", "rmnet", "ccmni", "v4-", "dummy").none { p -> it.name.startsWith(p) } }
+        .flatMap { it.inetAddresses.toList() }
+        .filterIsInstance<Inet4Address>()
+        .filter { it.isSiteLocalAddress }
+        .mapNotNull { it.hostAddress }
+        .distinct()
+}.getOrDefault(emptyList())

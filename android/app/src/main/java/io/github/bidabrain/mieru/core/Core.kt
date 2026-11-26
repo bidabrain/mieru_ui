@@ -56,6 +56,7 @@ object Core {
         CoreOptions(
             profile = p, routing = d.routing, ipv6 = d.settings.ipv6, stack = d.settings.stack,
             logLevel = d.settings.logLevel, geoxSource = d.settings.geoxSource, mixedPort = d.settings.mixedPort,
+            allowLan = d.settings.allowLan,
         ),
     )
 
